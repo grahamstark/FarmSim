@@ -2,22 +2,17 @@
 Wrangling the Farm Business Survey Data 
 =#
 
-# we've promised to use this only one OneDrive, so....
-const DDIR_ONEDRIVE = joinpath( "C:\\","Users","gwdv3","OneDrive - Northumbria University - Production Azure AD","Documents","Basic_Income_Farmers","FarmBusinessSurvey","data" )
-
-# each year unpacked into own directory
-const DATADIRS = OrderedDict([
-    2021=>joinpath(DDIR_ONEDRIVE, "9041txt", "UKDA-9041-txt", "txt"),
-    2022=>joinpath(DDIR_ONEDRIVE, "9287txt", "UKDA-9287-txt", "txt","standard_output_coefficients_2017_version"), # why? who knows ..
-    2023=>joinpath(DDIR_ONEDRIVE, "9360txt", "UKDA-9360-txt", "txt")])
-
 """
 Strip £ sign thingy from field_value items, so was can cast as numbers
 """
 str2f(s::AbstractString) = parse(Float64,s[3:end])
 str2f(s) = s
 
-export open_raw_files, wrangle_datasets
+export 
+    load_calcdata_as_panel,
+    open_raw_files, 
+    wrangle_datasets
+    
 """
 Open all 4 files for a given year as DataFrames 
 """
@@ -120,6 +115,9 @@ function wrangle_datasets( f :: NamedTuple )::NamedTuple
     return ( ; calcdata=cdw, fasdata=fdw, calclabels=f.calclabels, calcdata_cats, fasdata_cats )
 end
 
+"""
+
+"""
 function create_and_save( )
     editdir = joinpath(FarmSim.DDIR_ONEDRIVE,"edited")
     try
@@ -142,21 +140,62 @@ function create_and_save( )
     end
 end
 
-export load_calcdata_as_panel
-
+"""
+Load all 3 waves of the calcdata into a single frame, sorted by `farm_number`.
+Add counts of years,1st and final year, for each farm 
+"""
 function load_calcdata_as_panel()::AbstractDataFrame
+    
     function readone( editdir, year  )::DataFrame
         d = CSV.File( joinpath( editdir, "calcdata-$(year).tab"))|>DataFrame
         cats = readlines( joinpath( editdir, "calcdata-cats-$(year).txt"))
         return transform!( d, cats.=>categorical, renamecols=false )
     end
+
     editdir = joinpath(FarmSim.DDIR_ONEDRIVE,"edited")
     calcdata = readone( editdir, 2021 )
     for year in 2022:2023
         d = readone( editdir, year )
         append!(calcdata,d; cols=:union)
     end
-    sort!( calcdata, [:farm_number,:account_year])
-    paneldf!(calcdata,:farm_number,:account_year)
+    # this adds counts of years in the panel 
+    farms = groupby( calcdata,:farm_number)
+    panelsize=combine( farms,(:farm_number=>length), (:account_year=>minimum), (:account_year=>maximum))
+    calcdata = outerjoin( calcdata, panelsize;on=:farm_number )
+    sort!( calcdata, [:farm_number_length, :farm_number, :account_year])
+    # I think you can do this next one in the `combine` function
+    rename!( calcdata, [:farm_number_length=>:num_years, :account_year_minimum=>:first_panel_year,:account_year_maximum=>:last_panel_year])
+    # cast into a Panel DataFrame - FIXME: actually does nothing ...
+    paneldf!( calcdata,:farm_number,:account_year)
+    CSV.write( COMBINED_CALCDATA, calcdata; delim='\t')
     return calcdata
 end
+
+"""
+create crude unweighted growth rates for the numerical cols  
+"""
+function find_growth_rates( calcdata )
+    nrows,ncols = size(calcdata)
+    nms = names(calcdata)
+    outdata = DataFrame( col = fill("",nrows), mean_2021=fill(0.0, nrows), mean_2022=fill(0.0, nrows), mean_2023=fill(0.0, nrows))
+    row = 0
+    for year in 2021:2023
+        row = 0
+        ydata = calcdata[(calcdata.num_years .== 3) .& (calcdata.account_year .== year),:] 
+        # w = Weights( ydata.weight )
+        for n in nms 
+            c = ydata[!,n]
+            v = collect(skipmissing(c))
+            if eltype(v) <: Union{Missing,AbstractFloat}
+                row += 1
+                # av = mean( c, w )
+                outdata[row,:col] = n
+                t = Symbol( "mean_$year")
+                outdata[row,t] = mean( v )
+            end
+        end
+    end
+    outdata.avgr_2021_22 = (outdata.mean_2022./outdata.mean_2021) .- 1
+    outdata.avgr_2022_23 = (outdata.mean_2023./outdata.mean_2022) .- 1
+    return outdata[1:row,:]
+end # find_growth_rates
