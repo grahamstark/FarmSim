@@ -58,7 +58,7 @@ function editnames(s::AbstractString)::AbstractString
 end
 
 """
-ints for each col that supports it.   
+Convert each col from strings to ints for each col that supports it.   
 """
 function to_i!( d::AbstractDataFrame )
     nrows,ncols = size(d)
@@ -71,32 +71,42 @@ function to_i!( d::AbstractDataFrame )
     end
 end 
 
-function categoricalise( d::AbstractDataFrame, calclabels::AbstractDataFrame  )
-    # cols in target dataframe that are in calclabels
+"""
+Change fields in `d` from ints to one of the labels in the `calclabels` DataFrame
+
+return transformed dataframe and a list of cols that have been edited.
+"""
+function categoricalise( d::AbstractDataFrame, calclabels::AbstractDataFrame  )::Tuple
+    # cols in target dataframe (wide) that are in calclabels (long)
     targets = intersect(names(d),unique(calclabels.field_name))
     for c in targets 
         # rows of calclabels for the given col in target dataframe
         renrows = calclabels[calclabels.field_name.==c, [:value,:label]]
         # make a set of [val=>label] since that's what the recode function from categorical arrays wants.
-        m = Pair[]
+        val_to_label_maps = Pair[]
         # handle cases in the data but not in calclabels by adding e.g. 42=>"Other-42" and so on.
         unlabelled = setdiff( unique( d[!,c]), renrows.value)
         for u in unlabelled
             if ! ismissing(u)
-                push!( m, u=>"Other-$u")
+                push!( val_to_label_maps, u=>"Other-$u")
             end
         end
         for r in eachrow(renrows)
-            push!(m, r.value=>r.label)
+            push!(val_to_label_maps, r.value=>r.label)
         end
         # recode the col..
         @show c m unlabelled
-        d[!,c]=recode(d[!,c],m...)
+        d[!,c]=recode(d[!,c],val_to_label_maps...)
         # ... and then fix its type as categorical 
     end
     return transform!( d, targets.=>categorical, renamecols=false ), targets
 end
 
+"""
+`f`: a collection of datasets for some data year.
+-  turn the main ones from long->wide 
+-  then convert int fields to string categories
+"""
 function wrangle_datasets( f :: NamedTuple )::NamedTuple
     f.calclabels.field_name = editnames.(f.calclabels.field_name )
     f.calclabels.value = Int.(f.calclabels.value)
@@ -116,7 +126,7 @@ function wrangle_datasets( f :: NamedTuple )::NamedTuple
 end
 
 """
-
+For each year, create wide,categorialised datasets in their own directories.
 """
 function create_and_save( )
     editdir = joinpath(FarmSim.DDIR_ONEDRIVE,"edited")

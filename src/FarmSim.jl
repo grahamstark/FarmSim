@@ -17,7 +17,7 @@ using Reexport
 
 # we've promised to use this only one OneDrive, so....
 const DDIR_ONEDRIVE = joinpath( "C:\\","Users","gwdv3","OneDrive - Northumbria University - Production Azure AD","Documents","Basic_Income_Farmers","FarmBusinessSurvey","data" )
-
+const SYNTH_DATA = joinpath( "/", "mnt", "data", "farm-microsimulation")
 # each year unpacked into own directory
 const DATADIRS = OrderedDict([
     2021=>joinpath(DDIR_ONEDRIVE, "9041txt", "UKDA-9041-txt", "txt"),
@@ -27,5 +27,6 @@ const DATADIRS = OrderedDict([
 const COMBINED_CALCDATA = joinpath( DDIR_ONEDRIVE,"edited", "calcdata-2012-2023-combined.tab" )
 
 include( "fbs.jl")
+include( "farmsim.jl")
 
 end
