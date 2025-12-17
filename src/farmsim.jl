@@ -37,4 +37,19 @@ const WORKERS = [
     :time_worked_part_time_workers, 
     :agricultural_hirework_output, 
     :agricultural_hirework_costs, 
-    :other_unpaid_workers]
+    :other_unpaid_workers ]
+
+
+function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::Symbol, prop::Number )
+@argcheck (0 <= prop <= 1) "That's not a prop"
+    val = sum(ad[!,weight] .* ad[!,subsidy])
+    people = sum(ad[!,weight] .* ad[!,workers])
+    val, people
+    ad.ub .= val/people
+end
+
+function load(year::Int)::DataFrame
+    ad = CSV.File("/mnt/data/fadn/calcdata-20$(year).tab")|>DataFrame
+    ad = coalesce.(ad,0)
+    ad
+end

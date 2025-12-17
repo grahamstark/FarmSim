@@ -6,6 +6,7 @@ Start of Simple England-only Farm income model, eventually looking like
 =#
 using Reexport
 
+@reexport using ArgCheck
 @reexport using CategoricalArrays
 @reexport using Chain
 @reexport using CSV

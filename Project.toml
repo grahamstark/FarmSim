@@ -4,6 +4,7 @@ version = "1.0.0-DEV"
 authors = ["grahamstark <graham.stark@virtual-worlds.biz> and contributors"]
 
 [deps]
+ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
@@ -16,6 +17,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
+ArgCheck = "2.5.0"
 CSV = "0.10.15"
 CategoricalArrays = "1"
 Chain = "1"
