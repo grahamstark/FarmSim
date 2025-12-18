@@ -42,10 +42,11 @@ const WORKERS = [
 
 function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::Symbol, prop::Number )
 @argcheck (0 <= prop <= 1) "That's not a prop"
-    val = sum(ad[!,weight] .* ad[!,subsidy])
-    people = sum(ad[!,weight] .* ad[!,workers])
+    val = ad[!,weight] .* ad[!,subsidy]
+    people = ad[!,weight] .* ad[!,workers]
     val, people
-    ad.ub .= val/people
+    ad.ub = val ./ people
+    sum(val), sum(people)
 end
 
 function load(year::Int)::DataFrame
