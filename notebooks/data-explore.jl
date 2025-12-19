@@ -5,21 +5,52 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 9817d960-dc29-11f0-ad5f-3f05e52e8af6
-using CSV, DataFrames, StatsBase,CairoMakie
+using CSV, DataFrames, StatsBase,CairoMakie, Format
 
 # ╔═╡ 9dac990d-4f79-49f1-a9dd-d9a8502bee66
 md""" 
 
-# Farm Data Exploration
+# Farm Business Survey 
+
+### Data Exploration
+
+> The Farm Business Survey was initiated in 1936 as the Farm Management Survey with the objective of systematically collecting, for the first time, information on the economic condition of farming in England and Wales. The objectives of the Survey were and still are "to make available, year by year, such information as would provide a statistical basis for the study of the economic problems of the industry .... To provide a useful indication of the level of farm incomes each year and, over a series of years, to indicate the general trend, thereby enabling more reliable judgements on these matters to be formed.
+
+From [FARM BUSINESS SURVEY Collection Instructions](https://assets.publishing.service.gov.uk/media/5ee0cc9dd3bf7f1eb2043f19/fbs-instructions-201920_11jun20.pdf)
 
 """
+
+# ╔═╡ 085a1619-2929-4394-8b1e-d3d2048d1e83
+
 
 # ╔═╡ cb970315-80a4-4c52-aa41-21556c3d109d
 const PATH="/mnt/data/fadn/";
 
-# ╔═╡ 9e0fab71-2ee5-422c-a4bb-e7b125432fe2
+# ╔═╡ 8b7a255f-e136-4ad2-952c-a13b5d30cb4b
 begin
+	adm= CSV.File( joinpath( PATH, "calcdata-2021-2023-combined.tab"))|>DataFrame
+	adm = coalesce.(adm,0)
+	adm.weight=Weights(adm.weight)
+	byyear = groupby( adm, :account_year )
+	
+	const NAMES = names(adm)
 
+	
+function namesearch( key )	
+	matches=[]
+	re = Regex( "(.*$(key).*)")
+	for i in NAMES
+		m = match(re,i)
+		if ! isnothing(m) 
+			push!(matches,Symbol(m[1]))
+		end
+	end
+	sort(matches)
+end
+
+# grouped names of variables
+const INCOME = namesearch( "income" )
+const WAGE=namesearch( "wage" )
 const SUBSIDIES = [
     :subsidies, 
     :fadn_current_subsidies_taxes, 
@@ -38,7 +69,6 @@ const SUBSIDIES = [
     :dairy_cattle_subsidies, 
     :other_livestock_subsidies, 
     :other_livestock_subsidies_check ]
-
 const WORKERS = [
     :working_spouse, 
     :paid_whole_time_workers, 
@@ -61,54 +91,67 @@ const WORKERS = [
 
 end;
 
-# ╔═╡ 9b8b92c1-0478-4122-adc0-b341c780c2ae
-begin 
-	
-function load(year::Int)::DataFrame
-    ad = CSV.File(joinpath( PATH, "calcdata-20$(year).tab"))|>DataFrame
-    ad = coalesce.(ad,0)
-    ad
-end
+# ╔═╡ 9b246e60-adb7-4707-b820-ccfdc6966d69
+INCOME
 
-end;
+# ╔═╡ 61da25df-837c-48ab-8891-c1d9c17a601e
+mean( byyear[3].farm_business_income_incl_blsa, Weights(byyear[3].weight ))
 
-# ╔═╡ 8b7a255f-e136-4ad2-952c-a13b5d30cb4b
+# ╔═╡ 69177fb1-0a3a-4432-acbc-843b6eb59f96
+
+
+# ╔═╡ c318081b-9013-425b-a299-aee138797c73
+byyear[3][!,INCOME]
+
+# ╔═╡ 48cd83ec-d631-43fe-b651-53ecd9805e8e
 begin
-ad23 = load(23)
-ad22 = load(22)
-ad21 = load(21)
-admerged = CSV.File( joinpath( PATH, "calcdata-2021-2023-combined.tab"))|>DataFrame
-admerged = coalesce.(admerged,0)
+	farm_business_income_d	= adm.farm_business_output - adm.farm_business_costs + adm.farm_business_tenant_capital_sale_profits
+	farm_business_income_d ≈ adm.farm_business_income
 end
 
-# ╔═╡ 30945a7c-12a9-434d-9a3e-14e61e56d2d9
+# ╔═╡ cabc1675-1178-4e62-ae99-b0e7fc7ddf40
 begin
-n = names(ad23)
-tax=[]
-for i in n
-	m = match( r"(.*mana.*)",i)
-	if ! isnothing(m) 
-		push!(tax,m[1])
-	end
-end
-tax
+farm_business_output_d=adm.crop_output_excl_subsidies + adm.livestock_output_excl_subsidies + adm.output_subsidies + adm.sectioni_output
+farm_business_output_d ≈ adm.farm_business_output
 end
 
-# ╔═╡ 3d2d3f85-08bd-4a73-8347-0990ca57cd5c
-sum(ad23.manager)
+# ╔═╡ f7fcf3c8-89c0-453c-8065-0bb51422193b
+adm.epub_farm_type
 
-# ╔═╡ f0f4ceb3-9137-4616-99e2-0b06403f0953
+# ╔═╡ b145f67f-a973-42e8-9513-0aadf8ce8a6f
 md"""
-
-These are the three datasets I've constructed from the raw data, and a merged panel.
-The England one is based on [EU](https://agriculture.ec.europa.eu/data-and-analysis/farm-structures-and-economics/fsdn_en) [reporting](https://wikis.ec.europa.eu/spaces/IFS/pages/83690092/Integrated+Farm+Statistics+Manual+2023+edition). 
-
+The below is not quite table 3.1a from [Chapter 3: Farming income](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023/chapter-3-farming-income#distribution-of-farm-incomes-and-performance). I think the problem is that there's a `Horticulture` in the data but not in table 3.1a.
 """
+
+# ╔═╡ 430272db-3d67-4e7c-8b14-3d4de07b59ed
+begin
+	
+wmean(x,y) = format(round(mean(x,Weights(y))/500.0)*500;commas=true, precision=0)
+	
+function table_3( 
+	adm::AbstractDataFrame;
+	income::Symbol, 
+	breakdown=:farm_type,
+	weight=:weight )::AbstractDataFrame
+	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>wmean=>:income))
+	sort!( ghh, :account_year)
+	vhh = unstack( ghh, :account_year, :income )
+end
+	
+adm.farm_business_income_non_neg = max.(adm.farm_business_income,(0.0,))
+
+# try this every way ..
+table_3(adm; income=:fadn_gross_farm_income )
+table_3(adm; income=:farm_business_income, breakdown=:epub_farm_type )
+table_3(adm; income=:farm_business_income,weight=:weight_uncalibrated )
+table_3(adm; income=:farm_business_income_incl_blsa )
+table_3(adm; income=:farm_business_income_non_neg )
+table_3(adm; income=:farm_business_income )
+
+end
 
 # ╔═╡ e323c4b8-0c90-46b3-bfbb-77885d2e801d
 md"""
-
-There's very little documentation included but you can reconstruct what it all means from the EU docs and from the `23calcvars_protect.txt` file.
 
 There are some obvious bugs in the data, for example the `subsidies` column should be the sum of all subsidies from all sources (see the `calcvars` file), but it clearly isn't:
 
@@ -124,7 +167,14 @@ md"""
 * **FADN** Farm Accountancy Data Network (now FSDN - Farm sustainability data network)
 * **AWU** Annual Work Unit - the full-time equivalent employment, i.e. the total hours worked divided by the average annual hours worked in full-time jobs
 * **ALU**
+* **LFA** less favoured area (LFA);
+* **UAA** Utilised agricultural area (UAA) the agricultural area of the farm;
 * **SO** Standard Output - SOs represent the level of output that could be expected on the average farm under “normal” conditions (i.e. no disease outbreaks or adverse weather). 
+* **BLSA** Breeding Livestock Stock Appreciation. Breeding livestock stock appreciation represents the change in market prices of breeding cattle, sheep and pigs between the opening and closing valuations. It is not included in the calculation of farm business income. 
+* **Net Farm Income** Net Farm Income is a narrower measure of income; it is net of an imputed rent on owned land and an imputed cost for unpaid labour (apart from farmer and spouse). On this basis a quarter of farms in Great Britain failed to make a profit.
+* **Farm business income** (FBI) for sole traders and partnerships represents the financial return to all unpaid labour (farmers and spouses, non-principal partners and directors and their spouses and family workers) and on all their capital invested in the farm business, including land and buildings. For corporate businesses it represents the financial return on the shareholders capital invested in the farm business. 
+
+See also the income definitions in [Definitions used by the Farm Business Survey](https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/557605/fbs-definintions-4oct16.pdf) and [Ag In UK 2023](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023/chapter-3-farming-income)*
 
 """
 
@@ -138,7 +188,9 @@ md"""
 * [FBS Weighting](https://www.gov.uk/government/publications/calibration-weighting-for-the-farm-business-survey-fbs-in-england-november-2025-update/calibration-weighting-for-the-farm-business-survey-fbs-in-england-november-2025-update);
 * [Summary of 2019-2021 FBS](https://assets.publishing.service.gov.uk/media/65c09f30c4319100141a44fd/FBS_Evidence_Pack_24jan24i.pdf);
 * [Agriculural Workforce](https://www.gov.uk/government/statistics/agricultural-workforce-in-england-at-1-june/agricultural-workforce-in-england-at-1-june-2025);
-* ...from the [Survey of Agriculture and Horticulture](https://www.gov.uk/guidance/structure-of-the-agricultural-industry-survey-notes-and-guidance#june-survey-of-agriculture-and-horticulture-in-england).
+* ...from the [Survey of Agriculture and Horticulture](https://www.gov.uk/guidance/structure-of-the-agricultural-industry-survey-notes-and-guidance#june-survey-of-agriculture-and-horticulture-in-england);
+* [Agriculture in the United Kingdom](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023) (based on FBS)
+* [FARM BUSINESS SURVEY Collection Instructions](https://assets.publishing.service.gov.uk/media/5ee0cc9dd3bf7f1eb2043f19/fbs-instructions-201920_11jun20.pdf)
 
 """
 
@@ -149,18 +201,15 @@ md"""
 
 
 # ╔═╡ 03cf8bb9-40f6-458d-a101-fa1707c21bac
-admerged[!,SUBSIDIES]
-
-# ╔═╡ 7d72115b-46d7-442d-b20b-cbf5e533f5a9
-byyear = groupby(admerged,:account_year)
+byyear[1][!,SUBSIDIES]
 
 # ╔═╡ 0c542e88-6a17-4318-851c-1ecbd252fac0
-admerged.fadn_current_subsidies_taxes - (admerged.general_farm_subsidies_environment_payments)
+adm.fadn_current_subsidies_taxes - (adm.general_farm_subsidies_environment_payments)
 
 # ╔═╡ 88026c04-6f81-4e28-b060-5a1fc00653e4
 begin
 	x=[]
-	for i in ad23[7,:]
+	for i in byyear[1][7,:]
 		if(typeof(i) <: Number) && (i ≈ 1843.0)
 			push!(x,i)
 		end
@@ -168,11 +217,14 @@ begin
 	x
 end
 
+# ╔═╡ f05af3e4-75d1-4e67-a60d-fcd9aa3c77ea
+byyear[3]
+
 # ╔═╡ 6e682e09-76e2-40a4-9160-ed315c7eb823
 begin
 	sums = []
 	for year in 2021:2023
-		a = admerged[admerged.account_year .== year,:]
+		a = adm[adm.account_year .== year,:]
 		push!( sums, (;
 			year,
 			total_workers = a.weight' *( a.paid_workers + a.unpaid_workers),
@@ -181,14 +233,14 @@ begin
 	sums
 end
 
-# ╔═╡ c064d842-644e-4f90-b123-d3bfd9bba983
-admerged
-
 # ╔═╡ 8a1cadf5-dd27-43f5-8b3f-5272853e1de6
 WORKERS
 
 # ╔═╡ 9d837133-615b-4daa-8625-4d9233a4ad13
-unpaid_workers
+adm.unpaid_workers
+
+# ╔═╡ f84c91bf-f850-43c7-a15b-0dda34b24578
+byyear[( 2023, )]
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -196,12 +248,14 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Format = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
 CSV = "~0.10.15"
-CairoMakie = "~0.15.7"
+CairoMakie = "~0.15.8"
 DataFrames = "~1.8.1"
+Format = "~1.3.7"
 StatsBase = "~0.34.9"
 """
 
@@ -209,9 +263,9 @@ StatsBase = "~0.34.9"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.2"
+julia_version = "1.12.3"
 manifest_format = "2.0"
-project_hash = "232a9965c8b17e8d87a94537162bb68af080b930"
+project_hash = "1aa7c1aa6f1487454ff737a1dc6bbc8faece26ab"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -333,9 +387,9 @@ version = "1.1.1"
 
 [[deps.CairoMakie]]
 deps = ["CRC32c", "Cairo", "Cairo_jll", "Colors", "FileIO", "FreeType", "GeometryBasics", "LinearAlgebra", "Makie", "PrecompileTools"]
-git-tree-sha1 = "1778fd03576b0b6f88d0eafe89c54a3fb8df96a3"
+git-tree-sha1 = "5017d6849aff775febd36049f7d926a5fb6677ec"
 uuid = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
-version = "0.15.7"
+version = "0.15.8"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -414,9 +468,9 @@ version = "1.3.0+1"
 
 [[deps.ComputePipeline]]
 deps = ["Observables", "Preferences"]
-git-tree-sha1 = "21f3ae106d1dcc20a66e96366012f7289ebba498"
+git-tree-sha1 = "76dab592fa553e378f9dd8adea16fe2591aa3daa"
 uuid = "95dc2771-c249-4cd0-9c9f-1f3b4330693c"
-version = "0.1.5"
+version = "0.1.6"
 
 [[deps.ConstructionBase]]
 git-tree-sha1 = "b4b092499347b18a015186eae3042f72267106cb"
@@ -533,9 +587,9 @@ version = "0.1.6"
 
 [[deps.FFMPEG_jll]]
 deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers", "LAME_jll", "Libdl", "Ogg_jll", "OpenSSL_jll", "Opus_jll", "PCRE2_jll", "Zlib_jll", "libaom_jll", "libass_jll", "libfdk_aac_jll", "libvorbis_jll", "x264_jll", "x265_jll"]
-git-tree-sha1 = "3a948313e7a41eb1db7a1e733e6335f17b4ab3c4"
+git-tree-sha1 = "ccc81ba5e42497f4e76553a5545665eed577a663"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
-version = "7.1.1+0"
+version = "8.0.0+0"
 
 [[deps.FFTW]]
 deps = ["AbstractFFTs", "FFTW_jll", "Libdl", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
@@ -1057,9 +1111,9 @@ version = "0.5.16"
 
 [[deps.Makie]]
 deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "ComputePipeline", "Contour", "Dates", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FilePaths", "FixedPointNumbers", "Format", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageBase", "ImageIO", "InteractiveUtils", "Interpolations", "IntervalSets", "InverseFunctions", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "Markdown", "MathTeXEngine", "Observables", "OffsetArrays", "PNGFiles", "Packing", "Pkg", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Scratch", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun", "Unitful"]
-git-tree-sha1 = "7e6151c8432b91e76d9f9bc3adc6bbaecd00ec0a"
+git-tree-sha1 = "d1b974f376c24dad02c873e951c5cd4e351cd7c2"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.24.7"
+version = "0.24.8"
 
     [deps.Makie.extensions]
     MakieDynamicQuantitiesExt = "DynamicQuantities"
@@ -1243,7 +1297,7 @@ version = "0.44.2+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.12.0"
+version = "1.12.1"
 weakdeps = ["REPL"]
 
     [deps.Pkg.extensions]
@@ -1280,9 +1334,9 @@ version = "1.3.3"
 
 [[deps.Preferences]]
 deps = ["TOML"]
-git-tree-sha1 = "0f27480397253da18fe2c12a4ba4eb9eb208bf3d"
+git-tree-sha1 = "522f093a29b31a93e34eaea17ba055d850edea28"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
-version = "1.5.0"
+version = "1.5.1"
 
 [[deps.PrettyTables]]
 deps = ["Crayons", "LaTeXStrings", "Markdown", "PrecompileTools", "Printf", "REPL", "Reexport", "StringManipulation", "Tables"]
@@ -1836,27 +1890,32 @@ version = "4.1.0+0"
 """
 
 # ╔═╡ Cell order:
-# ╟─9dac990d-4f79-49f1-a9dd-d9a8502bee66
 # ╠═9817d960-dc29-11f0-ad5f-3f05e52e8af6
-# ╠═cb970315-80a4-4c52-aa41-21556c3d109d
-# ╠═9e0fab71-2ee5-422c-a4bb-e7b125432fe2
-# ╠═9b8b92c1-0478-4122-adc0-b341c780c2ae
-# ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
-# ╠═30945a7c-12a9-434d-9a3e-14e61e56d2d9
-# ╠═3d2d3f85-08bd-4a73-8347-0990ca57cd5c
-# ╟─f0f4ceb3-9137-4616-99e2-0b06403f0953
-# ╟─e323c4b8-0c90-46b3-bfbb-77885d2e801d
-# ╠═33fb1c96-310c-471a-a4eb-a0f85030f32b
-# ╠═c1d3ea09-a39d-48d7-9637-bb778d4d408b
+# ╟─9dac990d-4f79-49f1-a9dd-d9a8502bee66
+# ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
+# ╟─cb970315-80a4-4c52-aa41-21556c3d109d
+# ╟─8b7a255f-e136-4ad2-952c-a13b5d30cb4b
+# ╠═9b246e60-adb7-4707-b820-ccfdc6966d69
+# ╠═61da25df-837c-48ab-8891-c1d9c17a601e
+# ╠═69177fb1-0a3a-4432-acbc-843b6eb59f96
+# ╠═c318081b-9013-425b-a299-aee138797c73
+# ╠═48cd83ec-d631-43fe-b651-53ecd9805e8e
+# ╠═cabc1675-1178-4e62-ae99-b0e7fc7ddf40
+# ╠═f7fcf3c8-89c0-453c-8065-0bb51422193b
+# ╟─b145f67f-a973-42e8-9513-0aadf8ce8a6f
+# ╠═430272db-3d67-4e7c-8b14-3d4de07b59ed
+# ╠═e323c4b8-0c90-46b3-bfbb-77885d2e801d
+# ╟─33fb1c96-310c-471a-a4eb-a0f85030f32b
+# ╟─c1d3ea09-a39d-48d7-9637-bb778d4d408b
 # ╠═27391e63-45a3-4459-b89f-756d12c43252
 # ╠═87e05af5-a1ad-4d6e-8a68-3dcbc7c2227e
 # ╠═03cf8bb9-40f6-458d-a101-fa1707c21bac
-# ╠═7d72115b-46d7-442d-b20b-cbf5e533f5a9
 # ╠═0c542e88-6a17-4318-851c-1ecbd252fac0
 # ╟─88026c04-6f81-4e28-b060-5a1fc00653e4
+# ╠═f05af3e4-75d1-4e67-a60d-fcd9aa3c77ea
 # ╠═6e682e09-76e2-40a4-9160-ed315c7eb823
-# ╠═c064d842-644e-4f90-b123-d3bfd9bba983
 # ╠═8a1cadf5-dd27-43f5-8b3f-5272853e1de6
 # ╠═9d837133-615b-4daa-8625-4d9233a4ad13
+# ╠═f84c91bf-f850-43c7-a15b-0dda34b24578
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

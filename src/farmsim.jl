@@ -20,7 +20,10 @@ const SUBSIDIES = [
     :other_livestock_subsidies_check ]
 
 const WORKERS = [
+    :labour_force,
+    :manager,
     :working_spouse, 
+    :trainees,
     :paid_whole_time_workers, 
     :unpaid_workers, 
     :paid_workers, 
@@ -37,7 +40,8 @@ const WORKERS = [
     :time_worked_part_time_workers, 
     :agricultural_hirework_output, 
     :agricultural_hirework_costs, 
-    :other_unpaid_workers ]
+    :other_unpaid_workers,
+    :paid_casual_awu, ]
 
 
 function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::Symbol, prop::Number )
