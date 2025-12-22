@@ -58,3 +58,44 @@ function load(year::Int)::DataFrame
     ad = coalesce.(ad,0)
     ad
 end
+
+const var_pattern = r"[a-zA-Z_\.:\[\]0-9\(\)]+"
+const op_pattern = r"[\+\-\*\/]"
+
+function parse_one_line( io, r )
+    varname = editnames(r.varname)
+    # Pattern to capture variables and operators separately
+
+    # Extract all variables
+    variables = [m.match for m in eachmatch(var_pattern, r.formula)]
+    println( r.formula )
+    println(variables)  # ["x", "y", "z", "total", "count"]
+
+    # Extract all operators
+    operators = [m.match for m in eachmatch(op_pattern,r.formula)]
+    println(operators)  # ["+", "*", "-", "/"]
+    nv = length(variables)
+    no = length(operators)
+    println( io, "#  $(varname) = $(r.formula)")
+    print( io, "$varname = ")
+    for i in 1:nv
+        var = editnames(variables[i])
+        print( io, "adm.$(var) " )
+        # if i in 2:nv-1
+            if i <= no
+                print( io, operators[i])
+            end
+        # end
+    end
+    println(io,"\n")
+end
+
+function parse_calcs()
+    io = open( "operators.txt","w")
+    calcs = CSV.File( joinpath(DIR,"23calcvars_protect.csv")) |> DataFrame
+    rename!( calcs, [:id, :junk, :varname, :formula ])
+    for r in eachrow(calcs)
+        parse_one_line( io, r )
+    end
+    close(io)
+end
