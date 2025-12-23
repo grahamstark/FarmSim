@@ -158,7 +158,6 @@ end
 # Hack creation of panel 
 #
 function make_panel_hack()
-    
     calcdata,n1,n2 = make_combined_hack( 2021 )
     for year in 2022:2023
         d,nd1,nd2 = make_combined_hack( year )
@@ -177,8 +176,9 @@ function make_panel_hack()
     # I think you can do this next one in the `combine` function
     rename!( calcdata, [:farm_number_length=>:num_years, :account_year_minimum=>:first_panel_year,:account_year_maximum=>:last_panel_year])
     # cast into a Panel DataFrame - FIXME: actually does nothing ...
+    calcdata = coalesce.( calcdata, 0.0 )
     paneldf!( calcdata,:farm_number,:account_year)
-    CSV.write( "$(DIR)/joined-raw-data-2021-2023", calcdata; delim='\t')
+    CSV.write( "$(DIR)/joined-raw-data-2021-2023.tab", calcdata; delim='\t')
     return calcdata
 end
 

@@ -28,7 +28,7 @@ const PATH="/mnt/data/fadn/";
 
 # ╔═╡ 8b7a255f-e136-4ad2-952c-a13b5d30cb4b
 begin
-	adm= CSV.File( joinpath( PATH, "calcdata-2021-2023-combined.tab"))|>DataFrame
+	adm= CSV.File( joinpath( PATH, "joined-raw-data-2021-2023.tab"))|>DataFrame
 	adm = coalesce.(adm,0)
 	adm.weight=Weights(adm.weight)
 	byyear = groupby( adm, :account_year )
@@ -91,16 +91,9 @@ const WORKERS = [
 
 end;
 
-# ╔═╡ 9b246e60-adb7-4707-b820-ccfdc6966d69
-begin
-adm23 =  CSV.File( joinpath( PATH, "calcdata-2023.tab"))|>DataFrame
-adm22 =  CSV.File( joinpath( PATH, "calcdata-2022.tab"))|>DataFrame
-adm21 =  CSV.File( joinpath( PATH, "calcdata-2021.tab"))|>DataFrame
-end
-
 # ╔═╡ af51a45e-5b9c-4f67-8167-f2d4011d1077
 begin
-f = adm23[adm23.farm_number .== 1697,:]
+f = adm[adm.farm_number .== 1697,end-10:end]
 
 end
 
@@ -113,14 +106,11 @@ mean( byyear[3].farm_business_income_incl_blsa, Weights(byyear[3].weight ))
 # ╔═╡ 69177fb1-0a3a-4432-acbc-843b6eb59f96
 sum(valuation_change_crops_livestock - adm.valuation_change_crops_livestock)
 
-# ╔═╡ 9090d758-339b-426a-92b3-e8ce95d7ad6e
-names(adm23)
-
 # ╔═╡ b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
 adm23.area_
 
 # ╔═╡ e9182342-7db9-40bf-8804-adb123110239
-crop_subsidies = adm23.area_payments +adm23.set_aside_payments +adm23.other_crop_subsidies 
+crop_subsidies = adm.area_payments +adm23.set_aside_payments +adm23.other_crop_subsidies 
 
 # ╔═╡ 435b1a10-9c12-412e-890b-3dd41bfa750f
 other_livestock_subsidies = adm.livestock_subsidies -adm.scp_payments -adm.bsp_payments -adm.sap_payments -adm.bull_slaughter_premium 
@@ -1923,12 +1913,10 @@ version = "4.1.0+0"
 # ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
 # ╠═cb970315-80a4-4c52-aa41-21556c3d109d
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
-# ╠═9b246e60-adb7-4707-b820-ccfdc6966d69
 # ╠═af51a45e-5b9c-4f67-8167-f2d4011d1077
 # ╠═0c5fb70c-348f-4fd2-98a5-af0dcfaf0e6a
 # ╠═61da25df-837c-48ab-8891-c1d9c17a601e
 # ╠═69177fb1-0a3a-4432-acbc-843b6eb59f96
-# ╠═9090d758-339b-426a-92b3-e8ce95d7ad6e
 # ╠═b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
 # ╠═e9182342-7db9-40bf-8804-adb123110239
 # ╠═435b1a10-9c12-412e-890b-3dd41bfa750f
