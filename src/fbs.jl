@@ -116,14 +116,54 @@ function wrangle_datasets( f :: NamedTuple )::NamedTuple
     cdw, calcdata_cats=categoricalise( cdw, f.calclabels )
     
     nrows,ncols = size(f.fasdata)
-    f.fasdata.v = ones(nrows)
-    fdw = unstack( f.fasdata, [:farm_number, :section, :row, :column, :crop_type,:mdc], :v, :field_value; combine=last )
-    rename!( fdw, "1.0"=>"field_val")
+    # f.fasdata.v = ones(nrows)
+    
+    f.fasdata.vname = f.fasdata.section .* "-" .* string.(f.fasdata.row)
+    fdw = unstack( fas, :farm_number, :vname, :field_val, combine=last )
+    # fdw = unstack( f.fasdata, [:farm_number, :section, :row, :column, :crop_type,:mdc], :v, :field_value; combine=last )
+    # rename!( fdw, "1.0"=>"field_val")
     to_i!( fdw )
     rename!( editnames, fdw )
     fdw, fasdata_cats=categoricalise( fdw, f.calclabels )
+    fdw = innerjoin!( cdw, fdw ; on=:farm_number )
     return ( ; calcdata=cdw, fasdata=fdw, calclabels=f.calclabels, calcdata_cats, fasdata_cats )
 end
+
+
+#
+# hack one-off version for the raw data. Assumes calcdata already created
+#
+function make_combined_hack( year :: Int )
+    fass = CSV.File( "$(DIR)fasdata-2023.tab")|>DataFrame
+    fass.vname = fass.section .* "-" .* string.(fass.row)
+    fass = unstack( fass, :farm_number, :vname, :field_val, combine=last ) 
+    fass = coalesce.( fass, 0.0 )
+    to_i!( fass )
+    cdw=CSV.File( "$(DIR)/calcdata-$(year).tab")|>DataFrame
+    fass = innerjoin( cdw, fass; on=:farm_number )
+    return fass
+end
+
+function make_panel_hack()
+    calcdata = make_combined_hack( 2021 )
+    for year in 2022:2023
+        d = make_combined_hack( year )
+        append!(calcdata,d; cols=:union)
+    end
+    calcdata = coalesce.( calcdata, 0.0 )
+    # this adds counts of years in the panel 
+    farms = groupby( calcdata,:farm_number)
+    panelsize=combine( farms,(:farm_number=>length), (:account_year=>minimum), (:account_year=>maximum))
+    calcdata = outerjoin( calcdata, panelsize;on=:farm_number )
+    sort!( calcdata, [:farm_number_length, :farm_number, :account_year]; rev=true)
+    # I think you can do this next one in the `combine` function
+    rename!( calcdata, [:farm_number_length=>:num_years, :account_year_minimum=>:first_panel_year,:account_year_maximum=>:last_panel_year])
+    # cast into a Panel DataFrame - FIXME: actually does nothing ...
+    paneldf!( calcdata,:farm_number,:account_year)
+    CSV.write( "$(DIR)/joined-raw-data-2021-2023", calcdata; delim='\t')
+    return calcdata
+end
+
 
 """
 For each year, create wide,categorialised datasets in their own directories.
