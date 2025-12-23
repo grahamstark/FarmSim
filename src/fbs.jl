@@ -129,28 +129,46 @@ function wrangle_datasets( f :: NamedTuple )::NamedTuple
     return ( ; calcdata=cdw, fasdata=fdw, calclabels=f.calclabels, calcdata_cats, fasdata_cats )
 end
 
+export to_i!
 
+# int formatter with 3 fixed places: 
+# 9=>009, 19=>019, 119=>119 so sort by varnames goes right way
+zfm(i)=format(i; width=3, zeropadding=true)
 #
 # hack one-off version for the raw data. Assumes calcdata already created
+# returns merged 1 year calc and raw data, and two ordered sets of varnames 
+# that can be used
+# to get everything back in order after merging years, with calc then raw.
 #
-function make_combined_hack( year :: Int )
+function make_combined_hack( year :: Int )::Tuple
     fass = CSV.File( "$(DIR)fasdata-2023.tab")|>DataFrame
-    fass.vname = fass.section .* "-" .* string.(fass.row)
+    fass.vname = lowercase.(fass.section) .* "_" .* zfm.(fass.row)
     fass = unstack( fass, :farm_number, :vname, :field_val, combine=last ) 
     fass = coalesce.( fass, 0.0 )
     to_i!( fass )
+    n2 = sort(names(fass))
     cdw=CSV.File( "$(DIR)/calcdata-$(year).tab")|>DataFrame
+    n1 = names(cdw)
     fass = innerjoin( cdw, fass; on=:farm_number )
-    return fass
+    # needed for keeping in order
+    return fass, OrderedSet(n1),OrderedSet(n2)
 end
 
+#
+# Hack creation of panel 
+#
 function make_panel_hack()
-    calcdata = make_combined_hack( 2021 )
+    
+    calcdata,n1,n2 = make_combined_hack( 2021 )
     for year in 2022:2023
-        d = make_combined_hack( year )
+        d,nd1,nd2 = make_combined_hack( year )
         append!(calcdata,d; cols=:union)
+        n1 = union( n1, nd1 )
+        n2 = union( n2, nd2 )
     end
+    nn = unique( vcat( collect(n1), collect(n2)))    
     calcdata = coalesce.( calcdata, 0.0 )
+    select!(calcdata,nn)
     # this adds counts of years in the panel 
     farms = groupby( calcdata,:farm_number)
     panelsize=combine( farms,(:farm_number=>length), (:account_year=>minimum), (:account_year=>maximum))

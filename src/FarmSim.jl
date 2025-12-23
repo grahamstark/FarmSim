@@ -13,6 +13,7 @@ using Reexport
 @reexport using DataFrames
 @reexport using DataStructures
 @reexport using Dates
+@reexport using Format
 @reexport using PanelDataTools
 @reexport using StatsBase
 
