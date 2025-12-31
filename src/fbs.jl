@@ -131,19 +131,23 @@ end
 
 export to_i!
 
+const DIR="/mnt/data/fadn/"
+
 # int formatter with 3 fixed places: 
 # 9=>009, 19=>019, 119=>119 so sort by varnames goes right way
 zfm(i)=format(i; width=3, zeropadding=true)
 #
-# hack one-off version for the raw data. Assumes calcdata already created
-# returns merged 1 year calc and raw data, and two ordered sets of varnames 
-# that can be used
-# to get everything back in order after merging years, with calc then raw.
-#
+
+"""
+hack one-off version for the raw data. 
+Assumes calcdata already created returns merged 1 year calc and raw data, 
+and two ordered sets of varnames that can be used to get everything back 
+in order after merging years, with calc then raw.
+"""
 function make_combined_hack( year :: Int )::Tuple
     fass = CSV.File( "$(DIR)fasdata-2023.tab")|>DataFrame
-    fass.vname = lowercase.(fass.section) .* "_" .* zfm.(fass.row)
-    fass = unstack( fass, :farm_number, :vname, :field_val, combine=last ) 
+    fass.vname = lowercase.(fass.section) .* "_" .* zfm.(fass.row) .* "_" .* zfm.(fass.column) .* "_" .* zfm.(fass.crop_type)
+    fass = unstack( fass, :farm_number, :vname, :field_val ) # , combine=last
     fass = coalesce.( fass, 0.0 )
     to_i!( fass )
     n2 = sort(names(fass))
@@ -154,9 +158,9 @@ function make_combined_hack( year :: Int )::Tuple
     return fass, OrderedSet(n1),OrderedSet(n2)
 end
 
-#
-# Hack creation of panel 
-#
+"""
+Hack creation of panel 
+"""
 function make_panel_hack()
     calcdata,n1,n2 = make_combined_hack( 2021 )
     for year in 2022:2023
@@ -165,8 +169,11 @@ function make_panel_hack()
         n1 = union( n1, nd1 )
         n2 = union( n2, nd2 )
     end
+    # ordered list of variable names, derived data first
     nn = unique( vcat( collect(n1), collect(n2)))    
+    # missings to zeros everywhere
     calcdata = coalesce.( calcdata, 0.0 )
+    # everything back in order
     select!(calcdata,nn)
     # this adds counts of years in the panel 
     farms = groupby( calcdata,:farm_number)
@@ -176,7 +183,6 @@ function make_panel_hack()
     # I think you can do this next one in the `combine` function
     rename!( calcdata, [:farm_number_length=>:num_years, :account_year_minimum=>:first_panel_year,:account_year_maximum=>:last_panel_year])
     # cast into a Panel DataFrame - FIXME: actually does nothing ...
-    calcdata = coalesce.( calcdata, 0.0 )
     paneldf!( calcdata,:farm_number,:account_year)
     CSV.write( "$(DIR)/joined-raw-data-2021-2023.tab", calcdata; delim='\t')
     return calcdata

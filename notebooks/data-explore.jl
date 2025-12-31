@@ -5,7 +5,7 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 9817d960-dc29-11f0-ad5f-3f05e52e8af6
-using CSV, DataFrames, StatsBase,CairoMakie, Format
+using CSV, DataFrames, StatsBase,CairoMakie, Format, PanelDataTools
 
 # ╔═╡ 9dac990d-4f79-49f1-a9dd-d9a8502bee66
 md""" 
@@ -28,12 +28,13 @@ const PATH="/mnt/data/fadn/";
 
 # ╔═╡ 8b7a255f-e136-4ad2-952c-a13b5d30cb4b
 begin
-	adm= CSV.File( joinpath( PATH, "joined-raw-data-2021-2023.tab"))|>DataFrame
-	adm = coalesce.(adm,0)
-	adm.weight=Weights(adm.weight)
-	byyear = groupby( adm, :account_year )
 	
-	const NAMES = names(adm)
+adm= CSV.File( joinpath( PATH, "joined-raw-data-2021-2023.tab"))|>DataFrame
+adm.weight=Weights(adm.weight)
+paneldf!( adm,:farm_number,:account_year)
+byyear = groupby( adm, :account_year )
+b3 = byyear[3]
+const NAMES = names(adm)
 	
 	
 function namesearch( key )	
@@ -105,6 +106,41 @@ mean( byyear[3].farm_business_income_incl_blsa, Weights(byyear[3].weight ))
 
 # ╔═╡ 69177fb1-0a3a-4432-acbc-843b6eb59f96
 sum(valuation_change_crops_livestock - adm.valuation_change_crops_livestock)
+
+# ╔═╡ d562e665-bf35-46e2-9d2e-0e31ae82501d
+namesearch( "high")
+
+# ╔═╡ ee55f4a5-4381-4769-9d9f-6ae637c06330
+sum( b3.s_121_004_000, Weights(b3.weight) )/1_000_000
+
+# ╔═╡ 861df656-098e-47b3-96fa-ae3a4f7b46b5
+sort(countmap(b3[1000:end,:s_156_007_000]))
+
+# ╔═╡ 11da8987-9771-4179-943e-56c9ca39ba10
+md"""
+
+## SUBSIDIES
+
+"""
+
+# ╔═╡ 13467abb-81d9-4bc1-873d-ce997f4a3278
+md"""
+
+### Higher Level StewardShip (HLS)
+
+I-219
+
+"""
+
+# ╔═╡ 4eb02a85-0347-4385-b4a3-afe849dc059b
+
+names(byyear[3])
+
+# ╔═╡ 84d8ca0c-a1b8-4a05-911f-974bb8645f06
+sort(countmap(byyear[3].s_147_004_000)) # countryside productivity grant
+
+# ╔═╡ c93ab274-623b-464a-96ed-2ce3ea4cac3b
+sort(countmap(byyear[3].s_122)) #
 
 # ╔═╡ b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
 adm23.area_
@@ -267,6 +303,7 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Format = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
+PanelDataTools = "f8e8dcbf-c8af-4c89-b3d0-30e7f728b8cf"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
@@ -274,6 +311,7 @@ CSV = "~0.10.15"
 CairoMakie = "~0.15.8"
 DataFrames = "~1.8.1"
 Format = "~1.3.7"
+PanelDataTools = "~0.3.0"
 StatsBase = "~0.34.9"
 """
 
@@ -283,7 +321,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.12.3"
 manifest_format = "2.0"
-project_hash = "1aa7c1aa6f1487454ff737a1dc6bbc8faece26ab"
+project_hash = "6f579f71340a698704680f99710364f22dced994"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -328,6 +366,11 @@ deps = ["Colors"]
 git-tree-sha1 = "e092fa223bf66a3c41f9c022bd074d916dc303e7"
 uuid = "27a7e980-b3e6-11e9-2bcd-0b925532e340"
 version = "0.4.2"
+
+[[deps.ArgCheck]]
+git-tree-sha1 = "f9e9a66c9b7be1ad7372bbd9b062d9230c30c5ce"
+uuid = "dce04be8-c92d-5529-be00-80e4d2c0e197"
+version = "2.5.0"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -1294,6 +1337,18 @@ git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
 uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
 version = "0.5.12"
 
+[[deps.PanelDataTools]]
+deps = ["DataFrames", "Dates", "PanelShift", "Test"]
+git-tree-sha1 = "e2a468b8a806ff366737237e2d8c73669cd2c085"
+uuid = "f8e8dcbf-c8af-4c89-b3d0-30e7f728b8cf"
+version = "0.3.0"
+
+[[deps.PanelShift]]
+deps = ["ArgCheck", "DataFrames", "Dates", "Test"]
+git-tree-sha1 = "5f40a3d9a41c3b84ea9a0e88e7109d83512c7ea8"
+uuid = "d68e4d5e-4a60-4df1-b225-9a1636c75ae0"
+version = "0.1.1"
+
 [[deps.Pango_jll]]
 deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jll", "Glib_jll", "HarfBuzz_jll", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "0662b083e11420952f2e62e17eddae7fc07d5997"
@@ -1917,6 +1972,14 @@ version = "4.1.0+0"
 # ╠═0c5fb70c-348f-4fd2-98a5-af0dcfaf0e6a
 # ╠═61da25df-837c-48ab-8891-c1d9c17a601e
 # ╠═69177fb1-0a3a-4432-acbc-843b6eb59f96
+# ╠═d562e665-bf35-46e2-9d2e-0e31ae82501d
+# ╠═ee55f4a5-4381-4769-9d9f-6ae637c06330
+# ╠═861df656-098e-47b3-96fa-ae3a4f7b46b5
+# ╠═11da8987-9771-4179-943e-56c9ca39ba10
+# ╠═13467abb-81d9-4bc1-873d-ce997f4a3278
+# ╠═4eb02a85-0347-4385-b4a3-afe849dc059b
+# ╠═84d8ca0c-a1b8-4a05-911f-974bb8645f06
+# ╠═c93ab274-623b-464a-96ed-2ce3ea4cac3b
 # ╠═b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
 # ╠═e9182342-7db9-40bf-8804-adb123110239
 # ╠═435b1a10-9c12-412e-890b-3dd41bfa750f
