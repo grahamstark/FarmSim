@@ -5,7 +5,8 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 9817d960-dc29-11f0-ad5f-3f05e52e8af6
-using CSV, DataFrames, StatsBase,CairoMakie, Format, PanelDataTools
+using CSV, PrettyTables, DataFrames, StatsBase,CairoMakie, Format, PanelDataTools, PlutoUI
+
 
 # ╔═╡ 9dac990d-4f79-49f1-a9dd-d9a8502bee66
 md""" 
@@ -21,7 +22,27 @@ From [FARM BUSINESS SURVEY Collection Instructions](https://assets.publishing.se
 """
 
 # ╔═╡ 085a1619-2929-4394-8b1e-d3d2048d1e83
+md"""
+### Missing Section!!! Household Income
 
+Possibly this data is in 2022 edition?
+
+Section N is missing ???? 
+N HOUSEHOLD INCOME
+
+|         |          |
+|:---------|----------|
+|Hours worked annually|03|
+|Employment|04|
+|Self-employment|05|
+|Investments|06|
+|Pensions|07|
+|Social payments|08|
+|Other income n.e.s.|09|
+|Net income from green energy technologies|11|
+|Total (lines 04 to 09 plus 11)|10|
+
+"""
 
 # ╔═╡ cb970315-80a4-4c52-aa41-21556c3d109d
 const PATH="/mnt/data/fadn/";
@@ -32,10 +53,19 @@ begin
 adm= CSV.File( joinpath( PATH, "joined-raw-data-2021-2023.tab"))|>DataFrame
 adm.weight=Weights(adm.weight)
 paneldf!( adm,:farm_number,:account_year)
+
+# attempt a fixed-up subsidy, from 
+# FADN.current.subsidies.taxes = subsidies + EU.agri.environment.payments  - VAT.current - rates + E(6)[12
+# possibly E(6)[12] is milk subsidies? Add back vat and rates
+adm.net_subsidies_fixed = adm.fadn_current_subsidies_taxes + adm.vat_current + adm.rates
+adm.total_workers = adm.unpaid_workers + adm.paid_workers
+   
 byyear = groupby( adm, :account_year )
+b1 = byyear[1]
+b2 = byyear[2]
 b3 = byyear[3]
+
 const NAMES = names(adm)
-	
 	
 function namesearch( key )	
 	matches=[]
@@ -53,6 +83,7 @@ end
 const INCOME = namesearch( "income" )
 const WAGE=namesearch( "wage" )
 const SUBSIDIES = [
+	:net_subsidies_fixed,
     :subsidies, 
     :fadn_current_subsidies_taxes, 
     :other_environment_grants_and_subsidies, 
@@ -64,13 +95,22 @@ const SUBSIDIES = [
     :agrienv_hfa_subs_cam, 
     :input_subsidies,
     :output_subsidies, 
+	:miscellaneous_grants,
+	# :hfa_payments,
     :subsidies_payments_to_agriculture, 
     :livestock_subsidies, 
     :livestock_subsidies_check, 
     :dairy_cattle_subsidies, 
     :other_livestock_subsidies, 
     :other_livestock_subsidies_check ]
+# crop.subsidies	area.payments + set.aside.payments + other.crop.subsidies
+const SUB_COMPONENTS = [
+	:area_payments,
+	:set_aside_payments,
+	:other_crop_subsidies
+]
 const WORKERS = [
+	:total_workers,
     :working_spouse, 
     :paid_whole_time_workers, 
     :unpaid_workers, 
@@ -90,7 +130,218 @@ const WORKERS = [
     :agricultural_hirework_costs, 
     :other_unpaid_workers ]
 
+wmean(x,y) = format(round(mean(x,Weights(y))/500.0)*500;commas=true, precision=0)
+vmean(x,y) = format(mean(x,Weights(y));precision=1)
+	
+function table_3( 
+	adm::AbstractDataFrame;
+	income::Symbol, 
+	breakdown=:farm_type,
+	weight=:weight )::AbstractDataFrame
+	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>wmean=>:income))
+	sort!( ghh, :account_year)
+	vhh = unstack( ghh, :account_year, :income )
+end
+
+function table_count( 
+	adm::AbstractDataFrame;
+	income::Symbol, 
+	breakdown=:farm_type,
+	weight=:weight )::AbstractDataFrame
+	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>vmean=>:income))
+	sort!( ghh, :account_year)
+	vhh = unstack( ghh, :account_year, :income )
+end
+
+	
+	
 end;
+
+# ╔═╡ a8693190-e7ff-4fcf-a565-aac7ee3847e7
+
+Show( MIME"text/html"(),  """
+<table border="0" cellspacing="0" cellpadding="0" class="table-ta1"><colgroup><col width="99"/><col width="99"/><col width="99"/><col width="99"/><col width="99"/><col width="99"/></colgroup><tr class="row-ro1"><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-ce2">
+<p>2022/23 </p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-ce2">
+<p>2022/23 [Note 9]</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-ce2">
+<p>2023/24 [Note 12]</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-ce2">
+<p>2024/25 (Provisional)</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Cereals</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>150,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>146,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>39,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>27,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: General cropping</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>125,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>126,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>95,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>108,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Dairy</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>229,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>224,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>71,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>176,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Grazing livestock (lowland)</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>21,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>23,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>17,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>28,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Grazing livestock (LFA)</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>25,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>27,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>23,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>28,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Specialist pigs</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>68,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>72,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>136,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>155,000</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Specialist poultry</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>106,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>117,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>143,500</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-ce4">
+<p>[x]</p>
+</td></tr><tr class="row-ro2"><td style="text-align:left;width:2.258cm; " class="cell-ce1">
+<p>England: Mixed</p>
+</td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>68,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce4">
+<p>69,000</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>22,500</p>
+</td><td style="text-align:right; width:2.258cm; " class="cell-ce3">
+<p>30,000</p>
+</td></tr><tr class="row-ro3"><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td><td style="text-align:left;width:2.258cm; " class="cell-Default"> </td></tr></table>
+""" )
+
+# ╔═╡ 756d39e6-3395-4de9-8444-f5a8194a5431
+table_3( adm, income=:farm_business_income)
+
+# ╔═╡ c93b7bdd-d080-4b79-af55-3f99dab24349
+md"""
+From 2022/23 onwards farm typology for England is based on 2017 Standard Output coefficients.  For comparision, 2022/23 is included with both 2013 and 2017 Standard Outputs.
+"""
+
+# ╔═╡ 4215f4ad-04b2-4168-82cf-62766ead8ca9
+table_3( adm, income=:net_subsidies_fixed)
+
+# ╔═╡ 7fce55fd-2109-45f4-b1c4-3b54fcb78610
+table_count( adm, income=:total_workers)
+
+# ╔═╡ ba2e134c-0262-4c14-8a71-94f7698b6a74
+begin
+
+pfmt(x) = Format.format(x,commas=true,precision=0)
+pfmt(x::AbstractVector) = Format.format.(x,commas=true,precision=0)
+	
+end
+
+# ╔═╡ 16ed291f-f9ac-4f0c-8a6a-d3389274aaa4
+
+
+# ╔═╡ 2f83b659-bdc1-4d05-bfde-3bc37307cf1c
+begin
+	
+function moneyhist!( fig::Figure, figp::Tuple, data::AbstractVector, weight::AbstractVector; title::String, colour=:darkgrey)
+	ax = Axis(
+		fig[figp[1], figp[2]]; 
+		title=title,
+		xlabel="£s pa", 
+		ytickformat = pfmt,
+		xtickformat = pfmt,
+		ylabel="Farms" )
+	hist!( ax, data; weights=weight, color=colour, bins=70)
+	fig
+end
+
+fig = Figure()
+bp = b3[b3.net_subsidies_fixed .> 0, :]
+moneyhist!(
+	fig, 
+	(1,1),
+	bp.net_subsidies_fixed, 
+	bp.weight;
+	title="Total Subsidies(Fixed), 2023/4" )	
+moneyhist!(
+	fig, 
+	(2,1),
+	bp.total_workers, 
+	bp.weight;
+	title="Total Workers" )	
+
+fig
+	
+end
+
+# ╔═╡ 5f8fd0d4-8a04-48a9-af4b-757c7b989eb9
+sort( countmap(b3.total_workers))
+
+# ╔═╡ 46e3998f-b700-42d6-bce3-96c72785c32f
+sum( b3.net_subsidies_fixed, Weights( b3.weight ))/1_000_000
+
+# ╔═╡ 9226378d-8cee-475c-ab18-88bf3c38d2d1
+adm.actual_subsidies = adm.output_subsidies + adm.input_subsidies + 	adm.miscellaneous_grants
+
+# ╔═╡ ff80dff9-551f-4b12-8bc6-7a2474dde4a3
+adm.eu_agri_environment_payments
+
+# ╔═╡ 04e8f363-d492-4a75-aedc-a34fd550303e
+summarystats(b3.net_subsidies_fixed)
+
+# ╔═╡ e51c0e0b-531e-4ab1-a6ee-71d583a727a7
+sort(countmap(b3.net_subsidies_fixed))
+
+# ╔═╡ 0efdb424-0b77-4500-9d03-21a025ebd734
+b3[!,SUBSIDIES]
+
+# ╔═╡ a180d5ba-dceb-47c4-9a5d-c535a5b0e4e8
+b3.vat_current + b3.rates #  + b3.e_006_012 - E(6)[12] possibly milk subsidies?
+
+# ╔═╡ c469f3aa-a991-4f45-adba-5cebc09198b2
+
+
+# ╔═╡ 3781296b-7e5b-416b-b8ab-4c87fea1b0ba
+
+
+# ╔═╡ 8c8ebef1-e0c0-4753-bee1-682ca76ea99a
+summarystats( b3.fadn_current_subsidies_taxes)
 
 # ╔═╡ af51a45e-5b9c-4f67-8167-f2d4011d1077
 begin
@@ -98,8 +349,20 @@ f = adm[adm.farm_number .== 1697,end-10:end]
 
 end
 
+# ╔═╡ e52ceafe-2660-4faf-b57e-1c4f9302eb65
+countmap(b2.farmer_spouse_off_farm_income_social_payments)
+
+# ╔═╡ fc7b5302-71cf-4b1d-bd99-fc6c325f1ff3
+countmap(b3.farmer_spouse_off_farm_income_social_payments)
+
+# ╔═╡ 6500bdd4-999a-45f6-9a0d-c11bff7cf9b5
+countmap(b1.farmer_spouse_off_farm_income_social_payments)
+
 # ╔═╡ 0c5fb70c-348f-4fd2-98a5-af0dcfaf0e6a
 valuation_change_crops_livestock = adm.valuation_change_crops +adm.valuation_change_livestock 
+
+# ╔═╡ 6046225c-0652-4622-b636-ec63da3fb288
+namesearch( "pension")
 
 # ╔═╡ 61da25df-837c-48ab-8891-c1d9c17a601e
 mean( byyear[3].farm_business_income_incl_blsa, Weights(byyear[3].weight ))
@@ -108,13 +371,31 @@ mean( byyear[3].farm_business_income_incl_blsa, Weights(byyear[3].weight ))
 sum(valuation_change_crops_livestock - adm.valuation_change_crops_livestock)
 
 # ╔═╡ d562e665-bf35-46e2-9d2e-0e31ae82501d
-namesearch( "high")
+namesearch( "hfa")
+
+# ╔═╡ 88c5fcc0-529d-4127-ac82-3cadec17739f
+namesearch( "payments")
 
 # ╔═╡ ee55f4a5-4381-4769-9d9f-6ae637c06330
 sum( b3.s_121_004_000, Weights(b3.weight) )/1_000_000
 
 # ╔═╡ 861df656-098e-47b3-96fa-ae3a4f7b46b5
 sort(countmap(b3[1000:end,:s_156_007_000]))
+
+# ╔═╡ 44b71b0d-5360-433d-9768-e62f3c3dbb42
+namesearch("fadn_output")
+
+# ╔═╡ c49b2098-01ad-4438-8de8-6cc940ff1265
+begin
+h = fit( Histogram, b3.fadn_output, Weights( b3.weight ), [-Inf, 0, 25_000, 125_000.0, 250_000.0, 500_000.0, Inf]; closed=:left )
+# h.weights = round.( 100.0 .* h.weights ./ sum(h.weights))
+end
+
+# ╔═╡ 871d0b2b-53f0-497e-8407-5f03a07b0757
+begin
+b325 = b3[b3.fadn_output .< 25_000,:]
+sum( b325.*b325.weight )
+end
 
 # ╔═╡ 11da8987-9771-4179-943e-56c9ca39ba10
 md"""
@@ -180,18 +461,7 @@ The below is not quite table 3.1a from [Chapter 3: Farming income](https://www.g
 # ╔═╡ 430272db-3d67-4e7c-8b14-3d4de07b59ed
 begin
 	
-wmean(x,y) = format(round(mean(x,Weights(y))/500.0)*500;commas=true, precision=0)
-	
-function table_3( 
-	adm::AbstractDataFrame;
-	income::Symbol, 
-	breakdown=:farm_type,
-	weight=:weight )::AbstractDataFrame
-	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>wmean=>:income))
-	sort!( ghh, :account_year)
-	vhh = unstack( ghh, :account_year, :income )
-end
-	
+
 adm.farm_business_income_non_neg = max.(adm.farm_business_income,(0.0,))
 
 # try this every way ..
@@ -220,17 +490,27 @@ md"""
 
 * **FADN** Farm Accountancy Data Network (now FSDN - Farm sustainability data network)
 * **AWU** Annual Work Unit - the full-time equivalent employment, i.e. the total hours worked divided by the average annual hours worked in full-time jobs
-* **ALU**
-* **LFA** less favoured area (LFA);
+* **LFA** (LFA) less favoured area ;
 * **UAA** Utilised agricultural area (UAA) the agricultural area of the farm;
 * **SO** Standard Output - SOs represent the level of output that could be expected on the average farm under “normal” conditions (i.e. no disease outbreaks or adverse weather). 
 * **BLSA** Breeding Livestock Stock Appreciation. Breeding livestock stock appreciation represents the change in market prices of breeding cattle, sheep and pigs between the opening and closing valuations. It is not included in the calculation of farm business income. 
-* **Net Farm Income** Net Farm Income is a narrower measure of income; it is net of an imputed rent on owned land and an imputed cost for unpaid labour (apart from farmer and spouse). On this basis a quarter of farms in Great Britain failed to make a profit.
+* **Net Farm Income** (NFI) Net Farm Income is a narrower measure of income; it is net of an imputed rent on owned land and an imputed cost for unpaid labour (apart from farmer and spouse). On this basis a quarter of farms in Great Britain failed to make a profit.
 * **Farm business income** (FBI) for sole traders and partnerships represents the financial return to all unpaid labour (farmers and spouses, non-principal partners and directors and their spouses and family workers) and on all their capital invested in the farm business, including land and buildings. For corporate businesses it represents the financial return on the shareholders capital invested in the farm business. 
+* **SBS**:
+* **BPS**:
+* **HFA**: ??? Possibly Highly Favoured Area ???
+* **ALU**: Annual labour units (ALU) are the estimated number of full time worker equivalents of persons working on the holding during the year. Part-time workers are converted to full-time equivalents in proportion to their actual working time related to that of a full-time worker. One ALU represents one person employed for 2,200 hours.
 
-See also the income definitions in [Definitions used by the Farm Business Survey](https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/557605/fbs-definintions-4oct16.pdf) and [Ag In UK 2023](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023/chapter-3-farming-income)*
+See also:
+
+* the income definitions in [Definitions used by the Farm Business Survey](https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/557605/fbs-definintions-4oct16.pdf)
+* [Ag In UK 2023](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023/chapter-3-farming-income)
+* [Farm Accts Technical Notes](https://www.gov.uk/government/statistics/farm-accounts-in-england/survey-details-and-technical-notes--2)
 
 """
+
+# ╔═╡ 2c0430b5-7763-4f37-a496-4e83195dc92b
+
 
 # ╔═╡ c1d3ea09-a39d-48d7-9637-bb778d4d408b
 md"""
@@ -304,6 +584,8 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Format = "1fa38f19-a742-5d3f-a2b9-30dd87b9d5f8"
 PanelDataTools = "f8e8dcbf-c8af-4c89-b3d0-30e7f728b8cf"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
@@ -312,6 +594,8 @@ CairoMakie = "~0.15.8"
 DataFrames = "~1.8.1"
 Format = "~1.3.7"
 PanelDataTools = "~0.3.0"
+PlutoUI = "~0.7.77"
+PrettyTables = "~3.1.2"
 StatsBase = "~0.34.9"
 """
 
@@ -321,7 +605,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.12.3"
 manifest_format = "2.0"
-project_hash = "6f579f71340a698704680f99710364f22dced994"
+project_hash = "8640dcee3167f61bbad46667566cb26b8de42f66"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -333,6 +617,12 @@ weakdeps = ["ChainRulesCore", "Test"]
     [deps.AbstractFFTs.extensions]
     AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
     AbstractFFTsTestExt = "Test"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "6e1d2a35f2f90a4bc7c2ed98079b2ba09c35b83a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.2"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -830,6 +1120,24 @@ git-tree-sha1 = "68c173f4f449de5b438ee67ed0c9c748dc31a2ec"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.28"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.5"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "0ee181ec08df7d7c911901ea38baf16f755114dc"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "1.0.0"
+
 [[deps.ImageAxes]]
 deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
 git-tree-sha1 = "e12629406c6c4442539436581041d372d69c55ba"
@@ -1159,6 +1467,11 @@ version = "0.3.29"
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
+[[deps.MIMEs]]
+git-tree-sha1 = "c64d943587f7187e751162b3b84445bbbd79f691"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "1.1.0"
+
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "oneTBB_jll"]
 git-tree-sha1 = "282cadc186e7b2ae0eeadbd7a4dffed4196ae2aa"
@@ -1387,6 +1700,12 @@ deps = ["ColorSchemes", "Colors", "Dates", "PrecompileTools", "Printf", "Random"
 git-tree-sha1 = "26ca162858917496748aad52bb5d3be4d26a228a"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.4"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "Downloads", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "6ed167db158c7c1031abf3bd67f8e689c8bdf2b7"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.77"
 
 [[deps.PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
@@ -1755,10 +2074,20 @@ git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.11.3"
 
+[[deps.Tricks]]
+git-tree-sha1 = "311349fd1c93a31f783f977a71e8b062a57d4101"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.13"
+
 [[deps.TriplotBase]]
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
 uuid = "981d1d27-644d-49a2-9326-4793e63143c3"
 version = "0.1.0"
+
+[[deps.URIs]]
+git-tree-sha1 = "bef26fb046d031353ef97a82e3fdb6afe7f21b1a"
+uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
+version = "1.6.1"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
@@ -1968,13 +2297,40 @@ version = "4.1.0+0"
 # ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
 # ╠═cb970315-80a4-4c52-aa41-21556c3d109d
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
+# ╟─a8693190-e7ff-4fcf-a565-aac7ee3847e7
+# ╠═756d39e6-3395-4de9-8444-f5a8194a5431
+# ╟─c93b7bdd-d080-4b79-af55-3f99dab24349
+# ╠═4215f4ad-04b2-4168-82cf-62766ead8ca9
+# ╠═7fce55fd-2109-45f4-b1c4-3b54fcb78610
+# ╠═ba2e134c-0262-4c14-8a71-94f7698b6a74
+# ╠═16ed291f-f9ac-4f0c-8a6a-d3389274aaa4
+# ╠═2f83b659-bdc1-4d05-bfde-3bc37307cf1c
+# ╠═5f8fd0d4-8a04-48a9-af4b-757c7b989eb9
+# ╠═46e3998f-b700-42d6-bce3-96c72785c32f
+# ╠═9226378d-8cee-475c-ab18-88bf3c38d2d1
+# ╠═ff80dff9-551f-4b12-8bc6-7a2474dde4a3
+# ╠═04e8f363-d492-4a75-aedc-a34fd550303e
+# ╠═e51c0e0b-531e-4ab1-a6ee-71d583a727a7
+# ╠═0efdb424-0b77-4500-9d03-21a025ebd734
+# ╠═a180d5ba-dceb-47c4-9a5d-c535a5b0e4e8
+# ╠═c469f3aa-a991-4f45-adba-5cebc09198b2
+# ╠═3781296b-7e5b-416b-b8ab-4c87fea1b0ba
+# ╠═8c8ebef1-e0c0-4753-bee1-682ca76ea99a
 # ╠═af51a45e-5b9c-4f67-8167-f2d4011d1077
+# ╠═e52ceafe-2660-4faf-b57e-1c4f9302eb65
+# ╠═fc7b5302-71cf-4b1d-bd99-fc6c325f1ff3
+# ╠═6500bdd4-999a-45f6-9a0d-c11bff7cf9b5
 # ╠═0c5fb70c-348f-4fd2-98a5-af0dcfaf0e6a
+# ╠═6046225c-0652-4622-b636-ec63da3fb288
 # ╠═61da25df-837c-48ab-8891-c1d9c17a601e
 # ╠═69177fb1-0a3a-4432-acbc-843b6eb59f96
 # ╠═d562e665-bf35-46e2-9d2e-0e31ae82501d
+# ╠═88c5fcc0-529d-4127-ac82-3cadec17739f
 # ╠═ee55f4a5-4381-4769-9d9f-6ae637c06330
 # ╠═861df656-098e-47b3-96fa-ae3a4f7b46b5
+# ╠═44b71b0d-5360-433d-9768-e62f3c3dbb42
+# ╠═c49b2098-01ad-4438-8de8-6cc940ff1265
+# ╠═871d0b2b-53f0-497e-8407-5f03a07b0757
 # ╠═11da8987-9771-4179-943e-56c9ca39ba10
 # ╠═13467abb-81d9-4bc1-873d-ce997f4a3278
 # ╠═4eb02a85-0347-4385-b4a3-afe849dc059b
@@ -1991,7 +2347,8 @@ version = "4.1.0+0"
 # ╟─b145f67f-a973-42e8-9513-0aadf8ce8a6f
 # ╠═430272db-3d67-4e7c-8b14-3d4de07b59ed
 # ╠═e323c4b8-0c90-46b3-bfbb-77885d2e801d
-# ╟─33fb1c96-310c-471a-a4eb-a0f85030f32b
+# ╠═33fb1c96-310c-471a-a4eb-a0f85030f32b
+# ╠═2c0430b5-7763-4f37-a496-4e83195dc92b
 # ╟─c1d3ea09-a39d-48d7-9637-bb778d4d408b
 # ╠═27391e63-45a3-4459-b89f-756d12c43252
 # ╠═87e05af5-a1ad-4d6e-8a68-3dcbc7c2227e
