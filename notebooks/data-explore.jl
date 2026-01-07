@@ -47,6 +47,95 @@ N HOUSEHOLD INCOME
 # ╔═╡ cb970315-80a4-4c52-aa41-21556c3d109d
 const PATH="/mnt/data/fadn/";
 
+# ╔═╡ 16641f4f-ff04-4d81-ab5d-b36150235560
+begin
+	
+function add_productivty_quintiles!(adm::AbstractDataFrame)
+	adm.outputs_over_inputs_quartile = fill( 4, size(adm)[1])
+	groups = groupby(adm, [:account_year])
+	for group in groups
+		ooi = quantile(group.outputs_over_inputs, Weights(group.weight), [0.25,0.5,0.75] )
+		for f in eachrow(group)
+			i = 0
+			for o in ooi
+				i += 1
+				if f.outputs_over_inputs <= o
+					f.outputs_over_inputs_quartile = i
+					break
+				end
+			end
+		end
+	end
+	#
+	# revenue/hectare for each year & farm type
+	#
+	groups = groupby(adm, [:account_year, :farm_type])	
+	adm.revenue_quintile = fill( 5, size(adm)[1])
+	for group in groups
+		qbs = quantile(group.revenue_per_hectare, Weights(group.weight), [0.2,0.4,0.6,0.8] )
+		for f in eachrow(group)
+			i = 0
+			for q in qbs 
+				i += 1
+				if f.revenue_per_hectare <= q
+					f.revenue_quintile = i		
+					break
+				end
+			end
+		end
+	end
+end
+
+end
+
+# ╔═╡ 5e3e490d-627b-4ba3-b000-cc3938d91325
+begin 
+
+function by_year_averages( df :: DataFrame; min_years = 3)
+    dfn = df[df.num_years .>= min_years,:]
+    out = deepcopy(dfn)
+    fns = groupby( dfn, :farm_number )
+    fno = 0
+    for f in fns 
+		sort!(f,:account_year)
+        fno += 1
+        colno = 0
+        for col in eachcol( f )
+            colno += 1
+            v = if eltype(col) <: AbstractFloat
+                mean( col[1:end] )
+            else
+                col[1]
+            end
+            out[fno,colno] = v
+        end
+    end
+    out = out[1:fno,:]
+	# Re-do quintiles for 3 year averages.
+	out.revenue_quintile = fill( 5, size(out)[1])
+	groups = groupby( out, [:farm_type])
+	for group in groups
+		qbs = quantile(group.revenue_per_hectare, Weights(group.weight), [0.2,0.4,0.6,0.8] )
+		for f in eachrow(group)
+			i = 0
+			for q in qbs 
+				i += 1
+				if f.revenue_per_hectare <= q
+					f.revenue_quintile = i		
+					break
+				end
+			end
+		end
+	end
+	# recalculate these to avoid averages of averages
+	out.revenue_per_hectare =  out.fadn_output ./ out.adjusted_area_farmed
+	out.variable_costs_per_hectare = out.agriculture_variable_costs ./ out.adjusted_area_farmed
+	out.fixed_costs_per_hectare = out.agriculture_fixed_costs ./ out.adjusted_area_farmed
+	out
+end
+
+end
+
 # ╔═╡ 8b7a255f-e136-4ad2-952c-a13b5d30cb4b
 begin
 	
@@ -59,12 +148,19 @@ paneldf!( adm,:farm_number,:account_year)
 # possibly E(6)[12] is milk subsidies? Add back vat and rates
 adm.net_subsidies_fixed = adm.fadn_current_subsidies_taxes + adm.vat_current + adm.rates
 adm.total_workers = adm.unpaid_workers + adm.paid_workers
-   
+adm.revenue_per_hectare =  adm.fadn_output ./ adm.adjusted_area_farmed
+adm.variable_costs_per_hectare = adm.agriculture_variable_costs ./ adm.adjusted_area_farmed
+adm.fixed_costs_per_hectare = adm.agriculture_fixed_costs ./ adm.adjusted_area_farmed
+adm.outputs_over_inputs = adm.fadn_output ./ adm.agriculture_input_costs
+	
+add_productivty_quintiles!( adm )
 byyear = groupby( adm, :account_year )
 b1 = byyear[1]
 b2 = byyear[2]
 b3 = byyear[3]
-
+	
+adm_avgs = by_year_averages( adm )
+	
 const NAMES = names(adm)
 	
 function namesearch( key )	
@@ -131,7 +227,7 @@ const WORKERS = [
     :other_unpaid_workers ]
 
 wmean(x,y) = format(round(mean(x,Weights(y))/500.0)*500;commas=true, precision=0)
-vmean(x,y) = format(mean(x,Weights(y));precision=1)
+vmean(x,y) = round(mean(x,Weights(y));digits=1)
 	
 function table_3( 
 	adm::AbstractDataFrame;
@@ -156,6 +252,57 @@ end
 	
 	
 end;
+
+# ╔═╡ bcf3205d-59fe-4c0d-b15f-0800509621ea
+summarystats(adm.outputs_over_inputs)
+
+# ╔═╡ acd7d80d-7b4f-422e-bcad-dee0aae81dbb
+adm.outputs_over_inputs_quartile
+
+# ╔═╡ 0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
+begin
+lfas = adm_avgs[adm_avgs.farm_type .== "LFA Grazing Livestock",[:farm_number, :farm_type, :revenue_quintile, :revenue_per_hectare,:weight]]
+sort!(lfas,:revenue_per_hectare)
+end
+
+# ╔═╡ 3c75a340-aebc-4ac5-98c6-21dc0add1f69
+ghh = combine(groupby( adm_avgs, [:farm_type, :revenue_quintile] ),(:weight=>sum))
+
+# ╔═╡ 5f436ba4-3c96-4395-9784-645a76bf7154
+begin
+d = combine( groupby(adm, [:account_year, :outputs_over_inputs_quartile]),
+	([:outputs_over_inputs,:weight]=>vmean=>:average_outputs_over_inputs ))
+e=unstack(d,:account_year, :outputs_over_inputs_quartile, :average_outputs_over_inputs)
+fig5 = Figure()
+ax5 = Axis(fig5[1,1],xlabel="Year", ylabel="Output Costs/Input Costs", title="Kinda Sorta Fig 1.5 From Prod Pack")
+ln = []
+ls = []
+for v in 4:-1:1
+	push!(ln, lines!( ax5, e.account_year, e[!,v+1] ))
+	push!(ls,"$(5-v)")
+end
+Legend(fig5[1,2],ln,ls, "Efficiency Quartile")
+fig5
+# e
+end
+
+# ╔═╡ 4543cbf1-ab85-4061-b79d-242f305d8f51
+
+
+# ╔═╡ 3b997b94-659d-4124-8c7a-2472be4d5c51
+begin
+	# for no very compelling reason, try making 1.2 from Farm Performance Pack
+	# lower quintile much lower and top quintile much higher
+vcs = combine( 
+	groupby(adm_avgs,[:farm_type, :revenue_quintile]), ([:variable_costs_per_hectare,:weight]=>vmean=>:variable_costs_per_hectare))
+	
+fcs = combine( 
+	groupby(adm_avgs,[:farm_type, :revenue_quintile]),  ([:fixed_costs_per_hectare,:weight]=>vmean=>:fixed_costs_per_hectare ))
+	
+DataFrame( farm_type = vcs.farm_type, revenue_quintile=vcs.revenue_quintile,
+		 variable_costs = vcs.variable_costs_per_hectare,
+		 fixed_costs = fcs.fixed_costs_per_hectare)
+end
 
 # ╔═╡ a8693190-e7ff-4fcf-a565-aac7ee3847e7
 
@@ -387,15 +534,33 @@ namesearch("fadn_output")
 
 # ╔═╡ c49b2098-01ad-4438-8de8-6cc940ff1265
 begin
-h = fit( Histogram, b3.fadn_output, Weights( b3.weight ), [-Inf, 0, 25_000, 125_000.0, 250_000.0, 500_000.0, Inf]; closed=:left )
-# h.weights = round.( 100.0 .* h.weights ./ sum(h.weights))
+bands = [-Inf, 25_000, 125_000.0, 250_000.0, 500_000.0,Inf]
+output_count = fit( Histogram, b3.fadn_output, Weights( b3.weight ), bands )
+output_shares = fit( Histogram, b3.fadn_output, Weights( b3.weight.*b3.fadn_output), bands )
+	
 end
 
-# ╔═╡ 871d0b2b-53f0-497e-8407-5f03a07b0757
+# ╔═╡ 0994e9bc-03e8-40b7-a6a7-0f56f643dd37
+sum(output_count.weights), sum(b3.weight), sum(b3[b3.fadn_output .<= 25000,:weight]), sum(output_shares.weights), sum( b3.fadn_output, Weights( b3.weight ))
+
+# ╔═╡ fdb653b3-4583-476f-9c4a-9613ae566715
 begin
-b325 = b3[b3.fadn_output .< 25_000,:]
-sum( b325.*b325.weight )
+output_counts_pct = round.(100.0 .* output_count.weights ./ sum(output_count.weights))
+
+output_shares_pct = round.(100.0 .* output_shares.weights ./ sum(output_shares.weights)) #, digits=1)
+	
+output_counts_pct, output_shares_pct
 end
+
+# ╔═╡ 46037e32-d875-4674-aec0-4f70b3147c60
+md""" 
+
+Compare 1.1 of Farm Productivty Pack. - lots of smaller cases missing
+
+"""
+
+# ╔═╡ 2e548864-9303-44a7-9647-c197209cb180
+
 
 # ╔═╡ 11da8987-9771-4179-943e-56c9ca39ba10
 md"""
@@ -2293,10 +2458,19 @@ version = "4.1.0+0"
 
 # ╔═╡ Cell order:
 # ╠═9817d960-dc29-11f0-ad5f-3f05e52e8af6
-# ╟─9dac990d-4f79-49f1-a9dd-d9a8502bee66
+# ╠═9dac990d-4f79-49f1-a9dd-d9a8502bee66
 # ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
 # ╠═cb970315-80a4-4c52-aa41-21556c3d109d
+# ╠═16641f4f-ff04-4d81-ab5d-b36150235560
+# ╠═5e3e490d-627b-4ba3-b000-cc3938d91325
+# ╠═bcf3205d-59fe-4c0d-b15f-0800509621ea
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
+# ╠═acd7d80d-7b4f-422e-bcad-dee0aae81dbb
+# ╠═0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
+# ╠═3c75a340-aebc-4ac5-98c6-21dc0add1f69
+# ╠═5f436ba4-3c96-4395-9784-645a76bf7154
+# ╠═4543cbf1-ab85-4061-b79d-242f305d8f51
+# ╠═3b997b94-659d-4124-8c7a-2472be4d5c51
 # ╟─a8693190-e7ff-4fcf-a565-aac7ee3847e7
 # ╠═756d39e6-3395-4de9-8444-f5a8194a5431
 # ╟─c93b7bdd-d080-4b79-af55-3f99dab24349
@@ -2330,7 +2504,10 @@ version = "4.1.0+0"
 # ╠═861df656-098e-47b3-96fa-ae3a4f7b46b5
 # ╠═44b71b0d-5360-433d-9768-e62f3c3dbb42
 # ╠═c49b2098-01ad-4438-8de8-6cc940ff1265
-# ╠═871d0b2b-53f0-497e-8407-5f03a07b0757
+# ╠═0994e9bc-03e8-40b7-a6a7-0f56f643dd37
+# ╠═fdb653b3-4583-476f-9c4a-9613ae566715
+# ╠═46037e32-d875-4674-aec0-4f70b3147c60
+# ╠═2e548864-9303-44a7-9647-c197209cb180
 # ╠═11da8987-9771-4179-943e-56c9ca39ba10
 # ╠═13467abb-81d9-4bc1-873d-ce997f4a3278
 # ╠═4eb02a85-0347-4385-b4a3-afe849dc059b

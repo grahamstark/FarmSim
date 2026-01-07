@@ -11,8 +11,202 @@ str2f(s) = s
 export 
     load_calcdata_as_panel,
     open_raw_files, 
-    wrangle_datasets
-    
+    wrangle_datasets,
+    namesearch,
+    add_productivty_quintiles!,
+    by_year_averages
+
+function namesearch( df, key )	
+	matches=[]
+	re = Regex( "(.*$(key).*)")
+	for i in names(df)
+		m = match(re,i)
+		if ! isnothing(m) 
+			push!(matches,Symbol(m[1]))
+		end
+	end
+	sort(matches)
+end
+
+const SUBSIDIES = [
+	:net_subsidies_fixed,
+    :subsidies, 
+    :fadn_current_subsidies_taxes, 
+    :other_environment_grants_and_subsidies, 
+    :non_crop_livestock_grants_subsidies, 
+    :general_farm_subsidies_environment_payments, 
+    :livestock_sales_subsidies, 
+    :other_subs_cam, 
+    :crop_sales_subsidies, 
+    :agrienv_hfa_subs_cam, 
+    :input_subsidies,
+    :output_subsidies, 
+	:miscellaneous_grants,
+	# :hfa_payments,
+    :subsidies_payments_to_agriculture, 
+    :livestock_subsidies, 
+    :livestock_subsidies_check, 
+    :dairy_cattle_subsidies, 
+    :other_livestock_subsidies, 
+    :other_livestock_subsidies_check ]
+# crop.subsidies	area.payments + set.aside.payments + other.crop.subsidies
+const SUB_COMPONENTS = [
+	:area_payments,
+	:set_aside_payments,
+	:other_crop_subsidies
+]
+const WORKERS = [
+	:total_workers,
+    :working_spouse, 
+    :paid_whole_time_workers, 
+    :unpaid_workers, 
+    :paid_workers, 
+    :time_worked_farmers_partners, 
+    :time_worked_farmer, 
+    :time_worked_spouse, 
+    :time_worked_partners, 
+    :time_worked_full_time_workers, 
+    :contract_work, 
+    :hirework_cam, 
+    :sectioni_non_agricultural_hirework_costs, 
+    :sectioni_non_agricultural_hirework_output, 
+    :paid_part_time_workers, 
+    :time_worked_part_time_workers, 
+    :agricultural_hirework_output, 
+    :agricultural_hirework_costs, 
+    :other_unpaid_workers ]
+
+wmean(x,y) = format(round(mean(x,Weights(y))/500.0)*500;commas=true, precision=0)
+vmean(x,y) = round(mean(x,Weights(y));digits=1)
+	
+function table_3( 
+	adm::AbstractDataFrame;
+	income::Symbol, 
+	breakdown=:farm_type,
+	weight=:weight )::AbstractDataFrame
+	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>wmean=>:income))
+	sort!( ghh, :account_year)
+	vhh = unstack( ghh, :account_year, :income )
+end
+
+const PATH="/mnt/data/fadn/";
+
+function table_count( 
+	adm::AbstractDataFrame;
+	income::Symbol, 
+	breakdown=:farm_type,
+	weight=:weight )::AbstractDataFrame
+	ghh = combine(groupby( adm, [:account_year, breakdown] ),([income,weight]=>vmean=>:income))
+	sort!( ghh, :account_year)
+	vhh = unstack( ghh, :account_year, :income )
+end
+
+	
+
+function add_productivty_quintiles!(adm::AbstractDataFrame)
+	adm.outputs_over_inputs_quartile = fill( 4, size(adm)[1])
+	groups = groupby(adm, [:account_year])
+	for group in groups
+		ooi = quantile(group.outputs_over_inputs, Weights(group.weight), [0.25,0.5,0.75] )
+		for f in eachrow(group)
+			i = 0
+			for o in ooi
+				i += 1
+				if f.outputs_over_inputs <= o
+					f.outputs_over_inputs_quartile = i
+					break
+				end
+			end
+		end
+	end
+	#
+	# revenue/hectare for each year & farm type
+	#
+	groups = groupby(adm, [:account_year, :farm_type])	
+	adm.revenue_quintile = fill( 5, size(adm)[1])
+	for group in groups
+		qbs = quantile(group.revenue_per_hectare, Weights(group.weight), [0.2,0.4,0.6,0.8] )
+		for f in eachrow(group)
+			i = 0
+			for q in qbs 
+				i += 1
+				if f.revenue_per_hectare <= q
+					f.revenue_quintile = i		
+					break
+				end
+			end
+		end
+	end
+end
+
+
+function by_year_averages( df :: DataFrame; min_years = 3)
+    dfn = df[df.num_years .>= min_years,:]
+    out = deepcopy(dfn)
+    fns = groupby( dfn, :farm_number )
+    fno = 0
+    for f in fns 
+		sort!(f,:account_year)
+        fno += 1
+        colno = 0
+        for col in eachcol( f )
+            colno += 1
+            v = if eltype(col) <: AbstractFloat
+                mean( col[1:end] )
+            else
+                col[1]
+            end
+            out[fno,colno] = v
+        end
+    end
+    out = out[1:fno,:]
+	# Re-do quintiles for 3 year averages.
+	out.revenue_quintile = fill( 5, size(out)[1])
+	groups = groupby( out, [:farm_type])
+	for group in groups
+		qbs = quantile(group.revenue_per_hectare, Weights(group.weight), [0.2,0.4,0.6,0.8] )
+		for f in eachrow(group)
+			i = 0
+			for q in qbs 
+				i += 1
+				if f.revenue_per_hectare <= q
+					f.revenue_quintile = i		
+					break
+				end
+			end
+		end
+	end
+	# recalculate these to avoid averages of averages
+	out.revenue_per_hectare =  out.fadn_output ./ out.adjusted_area_farmed
+	out.variable_costs_per_hectare = out.agriculture_variable_costs ./ out.adjusted_area_farmed
+	out.fixed_costs_per_hectare = out.agriculture_fixed_costs ./ out.adjusted_area_farmed
+	out
+end
+
+export load_from_joined, by_year_averages, add_productivty_quintiles!
+
+function load_from_joined()
+    adm= CSV.File( joinpath( PATH, "joined-raw-data-2021-2023.tab"))|>DataFrame
+    adm.weight=Weights(adm.weight)
+    paneldf!( adm,:farm_number,:account_year)
+    # attempt a fixed-up subsidy, from 
+    # FADN.current.subsidies.taxes = subsidies + EU.agri.environment.payments  - VAT.current - rates + E(6)[12
+    # possibly E(6)[12] is milk subsidies? Add back vat and rates
+    adm.net_subsidies_fixed = adm.fadn_current_subsidies_taxes + adm.vat_current + adm.rates
+    adm.total_workers = adm.unpaid_workers + adm.paid_workers
+    adm.revenue_per_hectare =  adm.fadn_output ./ adm.adjusted_area_farmed
+    adm.variable_costs_per_hectare = adm.agriculture_variable_costs ./ adm.adjusted_area_farmed
+    adm.fixed_costs_per_hectare = adm.agriculture_fixed_costs ./ adm.adjusted_area_farmed
+    adm.outputs_over_inputs = adm.fadn_output ./ adm.agriculture_input_costs
+    add_productivty_quintiles!( adm )
+    byyear = groupby( adm, :account_year )
+    b1 = byyear[1]
+    b2 = byyear[2]
+    b3 = byyear[3]
+    adm_avgs = by_year_averages( adm )
+    adm, adm_avgs, b1, b2, b3
+end	
+
 """
 Open all 4 files for a given year as DataFrames 
 """
@@ -186,6 +380,32 @@ function make_panel_hack()
     paneldf!( calcdata,:farm_number,:account_year)
     CSV.write( "$(DIR)/joined-raw-data-2021-2023.tab", calcdata; delim='\t')
     return calcdata
+end
+
+"""
+Averages of the dataframe for each farm with at least `min_years` data, or 1st value for non-float values.
+FIXME - quite slow - some raw data not treaded as floats.
+"""
+function by_year_averages( df :: DataFrame; min_years = 3)
+    dfn = df[df.num_years .>= min_years,:]
+    out = deepcopy(dfn)
+    fns = groupby( dfn, :farm_number )
+    fno = 0
+    for f in fns 
+		sort!(f,:account_year)
+        fno += 1
+        colno = 0
+        for col in eachcol( f )
+            colno += 1
+            v = if eltype(col) <: AbstractFloat
+                mean( col[1:end] )
+            else
+                col[1]
+            end
+            out[fno,colno] = v
+        end
+    end
+    out[1:fno,:]
 end
 
 
