@@ -44,6 +44,108 @@ const WORKERS = [
     :paid_casual_awu, ]
 
 
+export Result, Params, Settings, Farm, calc_one, calc, initialise
+
+mutable struct Farm
+    farm_number::Int
+    farm_type::String
+    weight::Float64
+    workers::Float64 # 1/2 workers and so on
+    raw :: DataFrameRow
+end
+
+
+@with_kw mutable struct Result
+    subsidies = 0.0
+    net_income = 0.0    
+end
+
+@with_kw mutable struct Params
+    bi = 0.0
+end
+
+@with_kw mutable struct Settings
+    year = 2023
+end
+
+
+function calc_one( farm :: Farm, sys :: Params, settings :: Settings )::Result
+    res = Result()
+
+    return res
+end
+
+FARMS = Farm[]
+
+function load(year::Int)::DataFrame
+    ad = CSV.File("/mnt/data/fadn/calcdata-$(year).tab")|>DataFrame
+    ad = coalesce.(ad,0)
+    ad
+end
+
+function make_output( nfarms :: Int, nsys :: Int )::Vector{DataFrame}
+    out = Vector{DataFrame}(undef,nsys)
+    for i in 1:nsys
+        out[i] = DataFrame( 
+            farm_number = fill(0,nfarms), 
+            farm_type = fill("",nfarms),
+            weight=zeros(nfarms), 
+            subsidies=zeros(nfarms),
+            net_income=zeros(nfarms))
+    end
+    return out
+end
+
+function initialise( settings::Settings, nsys :: Int; reset=false )
+    global FARMS
+    if( length(FARMS) == 0)||reset
+        df = load( settings.year )
+        nf = size(df)[1]
+        FARMS = Vector{Farm}(undef,nf)
+        i = 0
+        for r in eachrow( df )
+            i += 1
+            FARMS[i] = Farm(
+                r.farm_number,
+                r.farm_type,
+                r.weight, 
+                r.paid_whole_time_workers,
+                r )
+        end
+    end
+    return make_output( length(FARMS), nsys )
+end
+
+function add_to_output!( output::DataFrame, farm::Farm, res :: Result, row::Int, settings::Settings )
+    r = output[row,:]
+    r.farm_number = farm.farm_number    
+    r.farm_type = farm.farm_type
+    r.weight = farm.weight
+    r.net_income = res.net_income
+    r.subsidies = res.subsidies
+end
+
+function summarise_output( output::Vector{DataFrame}, settings :: Settings )::NamedTuple
+    return (; a=0 )
+end
+
+function calc( systems::Vector{Params}, settings :: Settings; reset=false )
+    global FARMS
+    output = initialise( settings, length(systems); reset=reset )
+    row = 0
+    for farm in FARMS
+        row += 1
+        sysno = 0
+        for sys in systems
+            sysno += 1
+            res = calc_one( farm, sys, settings )
+            add_to_output!( output[sysno], farm, res, row, settings )
+        end
+    end
+    summary = summarise_output( output, settings )
+    return (;summary, output )
+end
+
 function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::Symbol, prop::Number )
 @argcheck (0 <= prop <= 1) "That's not a prop"
     val = ad[!,weight] .* ad[!,subsidy]
@@ -51,51 +153,4 @@ function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::
     val, people
     ad.ub = val ./ people
     sum(val), sum(people)
-end
-
-function load(year::Int)::DataFrame
-    ad = CSV.File("/mnt/data/fadn/calcdata-20$(year).tab")|>DataFrame
-    ad = coalesce.(ad,0)
-    ad
-end
-
-const var_pattern = r"[a-zA-Z_\.:\[\]0-9\(\)]+"
-const op_pattern = r"[\+\-\*\/]"
-
-function parse_one_line( io, r )
-    varname = editnames(r.varname)
-    # Pattern to capture variables and operators separately
-
-    # Extract all variables
-    variables = [m.match for m in eachmatch(var_pattern, r.formula)]
-    println( r.formula )
-    println(variables)  # ["x", "y", "z", "total", "count"]
-
-    # Extract all operators
-    operators = [m.match for m in eachmatch(op_pattern,r.formula)]
-    println(operators)  # ["+", "*", "-", "/"]
-    nv = length(variables)
-    no = length(operators)
-    println( io, "#  $(varname) = $(r.formula)")
-    print( io, "$varname = ")
-    for i in 1:nv
-        var = editnames(variables[i])
-        print( io, "adm.$(var) " )
-        # if i in 2:nv-1
-            if i <= no
-                print( io, operators[i])
-            end
-        # end
-    end
-    println(io,"\n")
-end
-
-function parse_calcs()
-    io = open( "operators.txt","w")
-    calcs = CSV.File( joinpath(DIR,"23calcvars_protect.csv")) |> DataFrame
-    rename!( calcs, [:id, :junk, :varname, :formula ])
-    for r in eachrow(calcs)
-        parse_one_line( io, r )
-    end
-    close(io)
 end
