@@ -126,6 +126,7 @@ end
 
 function load_from_joined()
     adm= CSV.File( joinpath( DIR, "joined-raw-data-2021-2023.tab"))|>DataFrame
+    sort!(adm,[:farm_number,:account_year])
     adm.weight=Weights(adm.weight)
     paneldf!( adm,:farm_number,:account_year)
     # attempt a fixed-up subsidy, from 
@@ -442,4 +443,16 @@ function parse_calcs()
         parse_one_line( io, r )
     end
     close(io)
+end
+
+function namesearch( key )	
+	matches=[]
+	re = Regex( "(.*$(key).*)")
+	for i in NAMES
+		m = match(re,i)
+		if ! isnothing(m) 
+			push!(matches,Symbol(m[1]))
+		end
+	end
+	sort(matches)
 end

@@ -17,13 +17,7 @@ using Parameters: @with_kw
 @reexport using Format
 @reexport using PanelDataTools
 @reexport using StatsBase
-@reexport using CairoMakie
 @reexport using PrettyTables
-@reexport using Pluto
-@reexport using PlutoLinks
-@reexport using PlutoHooks
-@reexport using PlutoTeachingTools
-@reexport using PlutoUI
 
 # we've promised to use this only one OneDrive, so....
 const DDIR_ONEDRIVE = joinpath( "C:\\","Users","gwdv3","OneDrive - Northumbria University - Production Azure AD","Documents","Basic_Income_Farmers","FarmBusinessSurvey","data" )
@@ -54,5 +48,41 @@ include( "fbs.jl")
 include( "farmsim.jl")
 
 
-
+farm_type
+altitude
+tenure_type
+gor
+paid_workers
+unpaid_workers
+rural_classification
+farm_size 
+epub_farmer_education
+adm.farmer_household_total_income
+form_of_business
+"farmer_age_band"
+"farmer_awu"
+"farmer_education"
+"farmer_gender"
+"farmer_has_spouse"
+"farmer_house_adults_with_income_not_farmer_spouse"
+"farmer_household_drawings"
+"farmer_household_drawings_pc"
+"farmer_household_farm_income"
+"farmer_household_farmer_spouse_income"
+"farmer_household_has_spouse"
+"farmer_household_income_other_members"
+"farmer_household_mcclements_scale"
+"farmer_household_mcclements_scale_part1"
+"farmer_household_mcclements_scale_part2"
+"farmer_household_number"
+"farmer_household_number_of_adults"
+"farmer_household_number_of_children"
+"farmer_household_number_of_occupants"
+"farmer_household_number_of_pension_age"
+"farmer_household_number_of_working_age"
+"farmer_household_oecd_scale"
+"farmer_household_total_income"
+"farmer_spouse_awu"
+"farmer_spouse_labour_cost"
+"farmer_spouse_off_farm_earned_income"
 end

@@ -412,6 +412,21 @@ table_3( adm, income=:net_subsidies_fixed)
 # ╔═╡ 7fce55fd-2109-45f4-b1c4-3b54fcb78610
 table_count( adm, income=:total_workers)
 
+# ╔═╡ a4cf074d-b4b5-4e95-80a4-e0ed07d224d7
+adm.age_of_farmer
+
+# ╔═╡ e148f887-34a0-4bc5-b8b8-1a653ff4d2c6
+adm.all_households_number_of_adults
+
+# ╔═╡ ffd1b178-732d-4554-beb5-d63fc530bf62
+levels(adm.farmer_awu)
+
+# ╔═╡ 97f3aae5-2538-4cd8-8628-63f04f34a664
+sort(NAMES)
+
+# ╔═╡ d0a365e5-9109-47be-a77d-d98e206bd5c5
+levels(adm.farmer_household_number_of_children)
+
 # ╔═╡ ba2e134c-0262-4c14-8a71-94f7698b6a74
 begin
 
@@ -560,7 +575,7 @@ Compare 1.1 of Farm Productivty Pack. - lots of smaller cases missing
 """
 
 # ╔═╡ 2e548864-9303-44a7-9647-c197209cb180
-
+NAMES
 
 # ╔═╡ 11da8987-9771-4179-943e-56c9ca39ba10
 md"""
@@ -616,7 +631,7 @@ farm_business_output_d ≈ adm.farm_business_output
 end
 
 # ╔═╡ f7fcf3c8-89c0-453c-8065-0bb51422193b
-adm.epub_farm_type
+levels(adm.form_of_business)
 
 # ╔═╡ b145f67f-a973-42e8-9513-0aadf8ce8a6f
 md"""
@@ -740,6 +755,9 @@ adm.unpaid_workers
 
 # ╔═╡ f84c91bf-f850-43c7-a15b-0dda34b24578
 byyear[( 2023, )]
+
+# ╔═╡ e127ac08-7b4d-4768-961e-73fe497ac1f3
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2476,6 +2494,11 @@ version = "4.1.0+0"
 # ╟─c93b7bdd-d080-4b79-af55-3f99dab24349
 # ╠═4215f4ad-04b2-4168-82cf-62766ead8ca9
 # ╠═7fce55fd-2109-45f4-b1c4-3b54fcb78610
+# ╠═a4cf074d-b4b5-4e95-80a4-e0ed07d224d7
+# ╠═e148f887-34a0-4bc5-b8b8-1a653ff4d2c6
+# ╠═ffd1b178-732d-4554-beb5-d63fc530bf62
+# ╠═97f3aae5-2538-4cd8-8628-63f04f34a664
+# ╠═d0a365e5-9109-47be-a77d-d98e206bd5c5
 # ╠═ba2e134c-0262-4c14-8a71-94f7698b6a74
 # ╠═16ed291f-f9ac-4f0c-8a6a-d3389274aaa4
 # ╠═2f83b659-bdc1-4d05-bfde-3bc37307cf1c
@@ -2537,5 +2560,6 @@ version = "4.1.0+0"
 # ╠═8a1cadf5-dd27-43f5-8b3f-5272853e1de6
 # ╠═9d837133-615b-4daa-8625-4d9233a4ad13
 # ╠═f84c91bf-f850-43c7-a15b-0dda34b24578
+# ╠═e127ac08-7b4d-4768-961e-73fe497ac1f3
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
