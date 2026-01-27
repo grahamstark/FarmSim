@@ -124,7 +124,7 @@ function by_year_averages( df :: DataFrame; min_years = 3)
 	out
 end
 
-function load_from_joined()
+function load_from_joined()::Tuple
     adm= CSV.File( joinpath( DIR, "joined-raw-data-2021-2023.tab"))|>DataFrame
     sort!(adm,[:farm_number,:account_year])
     adm.weight=Weights(adm.weight)
@@ -140,11 +140,12 @@ function load_from_joined()
     adm.outputs_over_inputs = adm.fadn_output ./ adm.agriculture_input_costs
     add_productivty_quintiles!( adm )
     byyear = groupby( adm, :account_year )
+    grouped_farms = groupby( adm,[:farm_number]) 
     b1 = byyear[1]
     b2 = byyear[2]
     b3 = byyear[3]
-    adm_avgs = by_year_averages( adm )
-    adm, adm_avgs, b1, b2, b3
+    adm_avgs = by_year_averages( adm; min_years=1 )
+    adm, adm_avgs, b1, b2, b3, grouped_farms
 end	
 
 """

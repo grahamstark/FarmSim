@@ -47,7 +47,7 @@ export
 include( "fbs.jl")
 include( "farmsim.jl")
 
-
+#=
 farm_type
 altitude
 tenure_type
@@ -85,4 +85,6 @@ form_of_business
 "farmer_spouse_awu"
 "farmer_spouse_labour_cost"
 "farmer_spouse_off_farm_earned_income"
+=#
+
 end

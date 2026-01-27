@@ -259,11 +259,17 @@ summarystats(adm.outputs_over_inputs)
 # ╔═╡ acd7d80d-7b4f-422e-bcad-dee0aae81dbb
 adm.outputs_over_inputs_quartile
 
+# ╔═╡ 518993ad-57bd-4a24-8836-23ed0189d76a
+sum(adm.farmer_household_farm_income - adm.farmer_household_total_income)
+
 # ╔═╡ 0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
 begin
 lfas = adm_avgs[adm_avgs.farm_type .== "LFA Grazing Livestock",[:farm_number, :farm_type, :revenue_quintile, :revenue_per_hectare,:weight]]
 sort!(lfas,:revenue_per_hectare)
 end
+
+# ╔═╡ 0e6c741c-9b71-4d16-88fb-c0f416d4db64
+adm_avgs.farm_number
 
 # ╔═╡ 3c75a340-aebc-4ac5-98c6-21dc0add1f69
 ghh = combine(groupby( adm_avgs, [:farm_type, :revenue_quintile] ),(:weight=>sum))
@@ -536,7 +542,10 @@ sum(valuation_change_crops_livestock - adm.valuation_change_crops_livestock)
 namesearch( "hfa")
 
 # ╔═╡ 88c5fcc0-529d-4127-ac82-3cadec17739f
-namesearch( "payments")
+namesearch( "class")
+
+# ╔═╡ 2dd85a92-d5d3-4f99-88b2-b2ca9436384e
+
 
 # ╔═╡ ee55f4a5-4381-4769-9d9f-6ae637c06330
 sum( b3.s_121_004_000, Weights(b3.weight) )/1_000_000
@@ -757,7 +766,7 @@ adm.unpaid_workers
 byyear[( 2023, )]
 
 # ╔═╡ e127ac08-7b4d-4768-961e-73fe497ac1f3
-
+df = 
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2484,7 +2493,9 @@ version = "4.1.0+0"
 # ╠═bcf3205d-59fe-4c0d-b15f-0800509621ea
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
 # ╠═acd7d80d-7b4f-422e-bcad-dee0aae81dbb
+# ╠═518993ad-57bd-4a24-8836-23ed0189d76a
 # ╠═0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
+# ╠═0e6c741c-9b71-4d16-88fb-c0f416d4db64
 # ╠═3c75a340-aebc-4ac5-98c6-21dc0add1f69
 # ╠═5f436ba4-3c96-4395-9784-645a76bf7154
 # ╠═4543cbf1-ab85-4061-b79d-242f305d8f51
@@ -2523,6 +2534,7 @@ version = "4.1.0+0"
 # ╠═69177fb1-0a3a-4432-acbc-843b6eb59f96
 # ╠═d562e665-bf35-46e2-9d2e-0e31ae82501d
 # ╠═88c5fcc0-529d-4127-ac82-3cadec17739f
+# ╠═2dd85a92-d5d3-4f99-88b2-b2ca9436384e
 # ╠═ee55f4a5-4381-4769-9d9f-6ae637c06330
 # ╠═861df656-098e-47b3-96fa-ae3a4f7b46b5
 # ╠═44b71b0d-5360-433d-9768-e62f3c3dbb42
