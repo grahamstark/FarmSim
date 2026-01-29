@@ -1,5 +1,10 @@
 export SUBSIDIES, WORKERS
 
+const INCOME_MEASURES = [
+    :net_income,
+    :subsidies
+]
+
 const SUBSIDIES = [
     :other_environment_grants_and_subsidies, 
     :subsidies, 
@@ -189,7 +194,19 @@ function add_to_output!( output::DataFrame, farm::Farm, res :: Result, row::Int,
     r.subsidies = res.subsidies
 end
 
-function gl( after::Number, before::Number)::String
+const GL_COLNAMES = [
+    "Lose > 50%",
+    "Lose > 25%",
+    "Lose > 10%",
+    "Lose > 5%",
+    "Unchanged",
+    "Gain < 10%",
+    "Gain < 25%",
+    "Gain < 50%",
+    "Gain >= 50%"
+]
+
+function gl(before::Number, after::Number)::String
 
     function pct()
          den = if before > 0
@@ -203,60 +220,239 @@ function gl( after::Number, before::Number)::String
     end
 
     pctc = pct()
-    return if pctc < -50
-            "Lose > 50%"
+    i = if pctc < -50
+            1
         elseif pctc < -25
-            "Lose > 25%"
+            2
         elseif pctc < -10
-            "Lose > 10%"
+            3
         elseif pctc < -5
-            "Lose > 5%"
+            4
         elseif pctc < 5
-            "Unchanged"
+            5
         elseif pctc < 10
-            "Gain < 10%"
+            6
         elseif pctc < 25
-            "Gain < 25%"
+            7
          elseif pctc < 50
-           "Gain < 50%"
+            8
         else
-            "Gain >= 50%"
+            9
         end
+    return GL_COLNAMES[i]
 end
 
+const MAX_EXAMPLES = 50
+
 function gain_lose_table( 
-	preres::AbstractDataFrame,
-    postres::AbstractDataFrame;
-    measure::Symbol, 
-	breakdown=:farm_type,
-	weight=:weight )::AbstractDataFrame
+    dhh :: AbstractDataFrame,
+	breakdown::Symbol )::NamedTuple
+    colnames = Symbol.([breakdown, GL_COLNAMES...])    
+    @show names(dhh)
+    max_examples = 1000
+    examples = DataFrame(
+        farm_number = zeros( Int, max_examples ),
+        colval = fill( "", max_examples ),
+        rowval = fill( "", max_examples )
+    )
+    # fill out examples as a dataframe
+    nexamples = 0
+    for colval in GL_COLNAMES # levels( dhh.gainlose )
+        for rowval in sort(levels( dhh[!, breakdown ]))
+            subset = dhh[ (dhh[!,breakdown] .== rowval) .& (dhh[!,:gainlose] .== colval),:]
+            # this next bit collects at most NUM_EXAMPLES of hhlds with (e.g.) colval='No Change'
+            # and row val = "Decile 1", and so on, and appends their details to the `examples` 
+            # dataframe.
+            ncaserows,ncasecols = size(subset)
+            if ncaserows > 0
+                nsamples = min(ncaserows,MAX_EXAMPLES)
+                # sample nsamples examples 
+                subset = subset[sample(1:ncaserows,nsamples,replace=false),:]
+                for r in eachrow(subset)
+                    nexamples += 1
+                    ex = examples[nexamples,:]
+                    ex.farm_number = r.farm_number
+                    ex.colval = colval
+                    ex.rowval = string(rowval)
+                end
+            end
+        end
+    end
+    examples = examples[1:nexamples,:]
+    sort!( examples,[:colval,:rowval])
 
-    dhh = DataFrame( 
-        hid = preres.hid,
-        data_year  = preres.data_year,
-        weighted_people = preres.weighted_people,
-        weight = preres.weight,
-        tenure = preres.tenure, 
-        region = preres.region,
-        decile = preres.decile,
-        hh_type = preres.hh_type,
-        num_children = Int.(preres.num_children),            
-        in_poverty = preres.in_poverty,
-        change = postres[:, measure] - preres[:,measure],
-        pre_income = preres[:,measure],
-        post_income = postres[:,measure],
-    
-	ghh = combine(groupby( dhh, breakdown ),([measure,weight]=>wmean=>:measure)))
+	ghh = combine( groupby( dhh, [breakdown,:gainlose] ),:weight=>sum)
+	sort!( ghh, breakdown)
+    vhh = unstack( ghh, :gainlose, :weight_sum )
+    @show vhh
+    n = size( vhh )[1]
+    missn = setdiff( colnames, Symbol.(names(vhh)))
+    for m in missn
+        vhh[:,m] = zeros(n)
+    end
+    select!( sort!(vhh, breakdown), colnames... )
+    return (; table=vhh,examples)
+end
 
-	sort!( ghh, :measure)
-	vhh = unstack( ghh, :account_year, :measure )
-
-    return vhh
+function make_gain_lose_tables( 
+    before::AbstractDataFrame, 
+    after ::AbstractDataFrame,
+    change :: Symbol )::NamedTuple
+    dhh = deepcopy(before)
+    @show names(before)
+	dhh.gainlose = gl.(before[!,change], after[!,change])
+    gl_farm_type = gain_lose_table( dhh, :farm_type )
+    gl_tenure_type = gain_lose_table( dhh, :tenure_type )
+    gl_paid_workers = gain_lose_table( dhh, :paid_workers )
+    gl_farm_size = gain_lose_table( dhh, :farm_size )
+    gl_gor = gain_lose_table( dhh, :gor )
+    gl_form_of_business = gain_lose_table( dhh, :form_of_business )
+    gl_revenue_quintile = gain_lose_table( dhh, :revenue_quintile )
+    gl_outputs_over_inputs_quartile = gain_lose_table( dhh, :outputs_over_inputs_quartile )
+    return( ; 
+        gl_farm_type, 
+        gl_tenure_type, 
+        gl_paid_workers, 
+        gl_farm_size,
+        gl_gor,
+        gl_form_of_business,
+        gl_revenue_quintile,
+        gl_outputs_over_inputs_quartile )
 end
 
 function merge( d1::DataFrame, d2::DataFrame )::DataFrame
     adm = hcat(d1,d2;makeunique=true)
 end
+
+
+function make_incomes_frame( RT :: DataType, n :: Int; id = 1 ) :: DataFrame
+    frame :: DataFrame = create_incomes_dataframe( RT, n )
+    # extra calculated fields
+    frame.employers_ni = zeros( n )
+    frame.scottish_income_tax = zeros( n ) # i.e. excluding savings & dividends
+    frame.total_benefits = zeros( n ) 
+    frame.legacy_mtbs  = zeros( n )
+    frame.means_tested_bens = zeros( n )
+    frame.non_means_tested_bens = zeros( n )
+    frame.sickness_illness = zeros( n )    
+    frame.scottish_benefits = zeros( n )    
+    frame.pension_relief_at_source = zeros( n )
+    frame.VED = zeros(n)
+    frame.fuel_duty = zeros(n)
+    frame.VAT = zeros(n)
+    frame.excise_beer = zeros(n)
+    frame.excise_cider = zeros(n)
+    frame.excise_wine = zeros(n)
+    frame.excise_tobacco = zeros(n)
+    frame.total_indirect = zeros(n)
+    frame.net_cost = zeros( n )
+    frame.net_inc_indirect = zeros( n )
+
+    # Various taxable income measures.
+    frame.ni_class_4_se_income = zeros( n )
+    frame.ni_class_1_primary_wage = zeros( n )
+    frame.it_taxable_income  = zeros( n )
+    frame.it_adjusted_net_income = zeros( n )
+    frame.it_total_income  = zeros( n )
+    frame.it_savings_income = zeros( n )
+    frame.it_non_savings_income = zeros( n )
+    frame.it_dividends_income = zeros( n )
+    frame.it_savings_taxable = zeros( n )
+    frame.it_non_savings_taxable = zeros( n )
+    frame.it_dividends_taxable  = zeros( n )
+    # tax end bands 
+    frame.it_dividend_band = zeros(Int,n) # kinda sorta - not normally expressed like this.
+    frame.it_savings_band = zeros(Int,n)
+    frame.it_non_savings_band = zeros(Int,n)
+    frame.ni_class_1_primary_band = zeros(Int,n)
+    frame.ni_class_1_secondary_band = zeros(Int,n)
+    frame.ni_class_4_band = zeros(Int,n)
+
+
+    # add some crosstab fields ... 
+    frame.id = fill( id, n )
+    frame.data_year = zeros( Int, n )
+    frame.sex = fill(Missing_Sex,n)
+    frame.ethnic_group = fill(Missing_Ethnic_Group,n)
+    frame.is_child = fill( false, n )
+    frame.age_band  = zeros(Int,n)
+    frame.employment_status = fill(Missing_ILO_Employment,n)
+    frame.tenure    = fill( Missing_Tenure_Type, n )
+    frame.region    = fill( Missing_Standard_Region, n )
+    frame.decile = zeros( Int, n )
+    frame.in_poverty = fill( false, n )
+    frame.council = fill( Symbol( "No_Council"), n)
+    return frame
+end
+
+
+function summarise_inc_frame( incd :: DataFrame ) :: DataFrame
+    nrows = 80
+    out = make_incomes_frame(Float64, nrows)
+    out.label = fill("",nrows)
+    
+    # labels
+    out[1,:label]="Grant Total £p.a"
+    out[2,:label]="Counts"
+    row = 3
+    for em in instances( ILO_Employment )
+        out[row,:label]="$em - £p.a"
+        row += 1
+        out[row,:label]="$em - counts"
+        row += 1
+    end
+    for em in instances( Tenure_Type )
+        out[row,:label]="$em - £p.a"
+        row += 1
+        out[row,:label]="$em - counts"
+        row += 1
+    end
+    for a in 1:17
+        em = age_str(a)
+        out[row,:label]="$em - £p.a"
+        row += 1
+        out[row,:label]="$em - counts"
+        row += 1
+    end
+
+    col = 3
+    # FIXME is there something subtly wrong with the weighting here?
+    for i in 1:(INC_ARRAY_SIZE+EXTRA_INC_COLS)
+        col += 1
+        # println( "on column $col")
+        out[1,col] = sum( WEEKS_PER_YEAR .* incd[:,col] .* incd[:,:weight] ) # £mn 
+        out[2,col] = sum((incd[:,col] .> 0) .* incd[:,:weight]) # counts
+        row = 3
+        for em in instances( ILO_Employment )
+            selected = incd.employment_status.==em
+            out[row,col] = sum( WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
+            row += 1
+            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
+            row += 1
+        end
+        for em in instances( Tenure_Type )
+            selected = incd.tenure .== em
+            out[row,col] =sum(  WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
+            row += 1                
+            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
+            row += 1
+        end
+        for a in 1:17
+            selected = incd.age_band .== a
+            out[row,col] = sum( WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
+            row += 1
+            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
+            row += 1
+        end                
+    end    
+    # note that the Count field for the next two is meaningless
+    out.total_indirect = out.VED + out.fuel_duty + out.VAT + out.excise_beer + out.excise_cider + out.excise_wine + 
+        out.excise_tobacco
+    out.net_inc_indirect = out.net_cost - out.total_indirect # 
+    select!(out, Not([:pid,:hid,:weight])) # clear out pids 
+    return out
+end
+
 
 
 function summarise_output( output::Vector{DataFrame}, settings :: Settings )::NamedTuple
