@@ -70,14 +70,29 @@ export Result, Params, Settings, Farm, calc_one, calc, initialise
     raw = DataFrame()
 end
 
+function last_raw( f :: Farm )::DataFrameRow
+    r = f.raw
+    lasty = maximum( r.account_year )
+    return r[r.account_year .== lasty,:][1,:]
+end
+
 
 @with_kw mutable struct Result
     subsidies = 0.0
     net_income = 0.0    
 end
 
+
 @with_kw mutable struct Params
     bi = 0.0
+    bi_include_unpaid = false
+    bi_include_paid = false
+    tmp_prop_paid = 1.0    
+end
+
+function weeklyise!( sys::Params)
+    sys.bi /= 52
+    sys.tmp_prop /= 100
 end
 
 @with_kw mutable struct Settings
@@ -87,7 +102,18 @@ end
 
 function calc_one( farm :: Farm, sys :: Params, settings :: Settings )::Result
     res = Result()
-
+    bi = 0.0
+    if sys.bi_include_unpaid
+        bi += sys.bi*farm.unpaid_workers
+    end
+    if sys.bi_include_paid
+        bi += sys.bi*farm.paid_workers
+    end
+    r = last_raw(farm)
+    chsubsidy = (1-sys.tmp_prop_paid)*r.net_subsidies_fixed
+    res.subsidies = r.net_subsidies_fixed - chsubsidy + bi
+    # q: fadn_output includes subsidies?
+    res.net_income = r.fadn_output + bi - chsubsidy
     return res
 end
 
@@ -249,7 +275,7 @@ function gain_lose_table(
 	breakdown::Symbol )::NamedTuple
     colnames = Symbol.([breakdown, GL_COLNAMES...])    
     @show names(dhh)
-    max_examples = 1000
+    max_examples = 2000
     examples = DataFrame(
         farm_number = zeros( Int, max_examples ),
         colval = fill( "", max_examples ),
@@ -291,6 +317,14 @@ function gain_lose_table(
         vhh[:,m] = zeros(n)
     end
     select!( sort!(vhh, breakdown), colnames... )
+    nr,nc = size(vhh)
+    for r in eachrow(vhh)
+        for c in 2:nc
+            if ismissing(r[c])
+                r[c] = 0.0
+            end
+        end
+    end
     return (; table=vhh,examples)
 end
 
@@ -457,8 +491,9 @@ end
 
 function summarise_output( output::Vector{DataFrame}, settings :: Settings )::NamedTuple
 
-
-    return (; a=0 )
+    gl_subsidies = make_gain_lose_tables( output[1], output[2], :subsidies )
+    gl_net_income = make_gain_lose_tables( output[1], output[2], :net_income )
+    return (; gl_subsidies, gl_net_income )
 end
 
 function calc( systems::Vector{Params}, settings :: Settings; reset=false )
@@ -487,3 +522,45 @@ function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::
     sum(val), sum(people)
 end
 
+
+# for prettytables
+function fm(v, r,c) 
+    return if c == 1
+        v
+    elseif c < 12
+        Format.format(v, precision=0, commas=true)
+    else
+        Format.format(v, precision=2, commas=true)
+    end
+    s
+end
+
+function pretty(s)
+    s
+end
+
+function format_gl( io, title::String, sf :: DataFrame )
+    sf[!,1] = pretty.(sf[!,1]) # labels on RHS
+    # io = IOBuffer()
+    pretty_table( 
+        io, 
+        sf[!,1:end]; 
+        backend = :markdown,
+        formatters=[fm], 
+        alignment=[:l,fill(:r,9)...],
+        # highlighters = [ht],
+        title = title )
+    # return String(take!(io))
+end
+
+function tables_to_md( out, title, tabs )
+    println( out, "# $title")
+    format_gl( out, "Farm Type", tabs.gl_farm_type.table ) 
+    format_gl( out, "Tenure Type", tabs.gl_tenure_type.table ) 
+    format_gl( out, "# Paid Workers", tabs.gl_paid_workers.table ) 
+    format_gl( out, "Farm Size", tabs.gl_farm_size.table )
+    format_gl( out, "Region", tabs.gl_gor.table )
+    format_gl( out, "Form of Business", tabs.gl_form_of_business.table )
+    format_gl( out, "Revenue Quintile (5=highest)", tabs.gl_revenue_quintile.table )
+    format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient)", tabs.gl_outputs_over_inputs_quartile.table )  
+end

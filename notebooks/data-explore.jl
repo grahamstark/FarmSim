@@ -88,6 +88,10 @@ end
 
 end
 
+# ╔═╡ 429da453-ee9d-4366-a0e6-ecaed5a103c2
+
+
+
 # ╔═╡ 5e3e490d-627b-4ba3-b000-cc3938d91325
 begin 
 
@@ -255,6 +259,18 @@ end;
 
 # ╔═╡ bcf3205d-59fe-4c0d-b15f-0800509621ea
 summarystats(adm.outputs_over_inputs)
+
+# ╔═╡ 4436ffa2-c99a-48d8-a9bc-4ca2d635eafa
+adm[!,SUBSIDIES]
+
+# ╔═╡ fbe44d1d-1336-40dc-a0f3-950d6adc60e0
+md"""Ag subsidies about £780m in 2023"""
+
+# ╔═╡ 49731732-83fd-4689-bbe9-74d8f2dfdf91
+[sum(b3.livestock_subsidies,Weights(b3.weight)), sum(b3.net_subsidies_fixed,Weights(b3.weight))] ./ 1_000_000
+
+# ╔═╡ ef865063-7bd7-4aae-8ac6-eb8303d99dc0
+sort(adm[!,[:farm_number,:account_year,:net_subsidies_fixed,:general_farm_subsidies_environment_payments,:livestock_subsidies]],[:farm_number,:account_year])
 
 # ╔═╡ acd7d80d-7b4f-422e-bcad-dee0aae81dbb
 adm.outputs_over_inputs_quartile
@@ -2489,9 +2505,14 @@ version = "4.1.0+0"
 # ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
 # ╠═cb970315-80a4-4c52-aa41-21556c3d109d
 # ╠═16641f4f-ff04-4d81-ab5d-b36150235560
+# ╠═429da453-ee9d-4366-a0e6-ecaed5a103c2
 # ╠═5e3e490d-627b-4ba3-b000-cc3938d91325
 # ╠═bcf3205d-59fe-4c0d-b15f-0800509621ea
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
+# ╠═4436ffa2-c99a-48d8-a9bc-4ca2d635eafa
+# ╠═fbe44d1d-1336-40dc-a0f3-950d6adc60e0
+# ╠═49731732-83fd-4689-bbe9-74d8f2dfdf91
+# ╠═ef865063-7bd7-4aae-8ac6-eb8303d99dc0
 # ╠═acd7d80d-7b4f-422e-bcad-dee0aae81dbb
 # ╠═518993ad-57bd-4a24-8836-23ed0189d76a
 # ╠═0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
