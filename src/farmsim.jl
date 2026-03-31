@@ -232,6 +232,8 @@ const GL_COLNAMES = [
     "Gain >= 50%"
 ]
 
+const TABLE_COLNAMES=vcat( "",GL_COLNAMES)
+
 function gl(before::Number, after::Number)::String
 
     function pct()
@@ -317,7 +319,9 @@ function gain_lose_table(
         vhh[:,m] = zeros(n)
     end
     select!( sort!(vhh, breakdown), colnames... )
+
     nr,nc = size(vhh)
+    #=
     for r in eachrow(vhh)
         for c in 2:nc
             if ismissing(r[c])
@@ -325,6 +329,26 @@ function gain_lose_table(
             end
         end
     end
+    =#
+
+    gavch = combine( groupby( dhh, [breakdown]),
+        ([:weight]=>sum=>:total_farms),          # sum of hh weights
+        ([:pre_income,:weight]=>mean=>:pre_income ),
+        ([:post_income,:weight]=>mean=>:post_income ),
+        ([:change_subsidies,:weight]=>mean=>:average_change_subsidies ))     # sum of bhc changes
+    gavch.avch = gavch.people_weighted_change_sum ./ gavch.weighted_people_sum # => average change for each group per person
+    gavch.total_transfer = WEEKS_PER_YEAR.*gavch.weighted_bhc_change_sum./1_000_000 # total moved to/from that group
+    # TEMP overwrite the new pct_change for JP -
+    gavch.pct_change = 100.0 .* ((gavch.people_weighted_post_income_sum .- gavch.people_weighted_pre_income_sum)./gavch.people_weighted_pre_income_sum)
+
+    # £spa
+    vhh = coalesce.(vhh,0.0)
+
+    vhh.average_change_subsidies = gavcg.average_change_subsidies
+    vhh.total_change_subsidies = gavcg.total_change_subsidies
+    vhh.pct_change_income = gavcg.pct_change_income
+    vhh.total_farms = gavcg.total_farms
+
     return (; table=vhh,examples)
 end
 
@@ -359,135 +383,6 @@ function merge( d1::DataFrame, d2::DataFrame )::DataFrame
 end
 
 
-function make_incomes_frame( RT :: DataType, n :: Int; id = 1 ) :: DataFrame
-    frame :: DataFrame = create_incomes_dataframe( RT, n )
-    # extra calculated fields
-    frame.employers_ni = zeros( n )
-    frame.scottish_income_tax = zeros( n ) # i.e. excluding savings & dividends
-    frame.total_benefits = zeros( n ) 
-    frame.legacy_mtbs  = zeros( n )
-    frame.means_tested_bens = zeros( n )
-    frame.non_means_tested_bens = zeros( n )
-    frame.sickness_illness = zeros( n )    
-    frame.scottish_benefits = zeros( n )    
-    frame.pension_relief_at_source = zeros( n )
-    frame.VED = zeros(n)
-    frame.fuel_duty = zeros(n)
-    frame.VAT = zeros(n)
-    frame.excise_beer = zeros(n)
-    frame.excise_cider = zeros(n)
-    frame.excise_wine = zeros(n)
-    frame.excise_tobacco = zeros(n)
-    frame.total_indirect = zeros(n)
-    frame.net_cost = zeros( n )
-    frame.net_inc_indirect = zeros( n )
-
-    # Various taxable income measures.
-    frame.ni_class_4_se_income = zeros( n )
-    frame.ni_class_1_primary_wage = zeros( n )
-    frame.it_taxable_income  = zeros( n )
-    frame.it_adjusted_net_income = zeros( n )
-    frame.it_total_income  = zeros( n )
-    frame.it_savings_income = zeros( n )
-    frame.it_non_savings_income = zeros( n )
-    frame.it_dividends_income = zeros( n )
-    frame.it_savings_taxable = zeros( n )
-    frame.it_non_savings_taxable = zeros( n )
-    frame.it_dividends_taxable  = zeros( n )
-    # tax end bands 
-    frame.it_dividend_band = zeros(Int,n) # kinda sorta - not normally expressed like this.
-    frame.it_savings_band = zeros(Int,n)
-    frame.it_non_savings_band = zeros(Int,n)
-    frame.ni_class_1_primary_band = zeros(Int,n)
-    frame.ni_class_1_secondary_band = zeros(Int,n)
-    frame.ni_class_4_band = zeros(Int,n)
-
-
-    # add some crosstab fields ... 
-    frame.id = fill( id, n )
-    frame.data_year = zeros( Int, n )
-    frame.sex = fill(Missing_Sex,n)
-    frame.ethnic_group = fill(Missing_Ethnic_Group,n)
-    frame.is_child = fill( false, n )
-    frame.age_band  = zeros(Int,n)
-    frame.employment_status = fill(Missing_ILO_Employment,n)
-    frame.tenure    = fill( Missing_Tenure_Type, n )
-    frame.region    = fill( Missing_Standard_Region, n )
-    frame.decile = zeros( Int, n )
-    frame.in_poverty = fill( false, n )
-    frame.council = fill( Symbol( "No_Council"), n)
-    return frame
-end
-
-
-function summarise_inc_frame( incd :: DataFrame ) :: DataFrame
-    nrows = 80
-    out = make_incomes_frame(Float64, nrows)
-    out.label = fill("",nrows)
-    
-    # labels
-    out[1,:label]="Grant Total £p.a"
-    out[2,:label]="Counts"
-    row = 3
-    for em in instances( ILO_Employment )
-        out[row,:label]="$em - £p.a"
-        row += 1
-        out[row,:label]="$em - counts"
-        row += 1
-    end
-    for em in instances( Tenure_Type )
-        out[row,:label]="$em - £p.a"
-        row += 1
-        out[row,:label]="$em - counts"
-        row += 1
-    end
-    for a in 1:17
-        em = age_str(a)
-        out[row,:label]="$em - £p.a"
-        row += 1
-        out[row,:label]="$em - counts"
-        row += 1
-    end
-
-    col = 3
-    # FIXME is there something subtly wrong with the weighting here?
-    for i in 1:(INC_ARRAY_SIZE+EXTRA_INC_COLS)
-        col += 1
-        # println( "on column $col")
-        out[1,col] = sum( WEEKS_PER_YEAR .* incd[:,col] .* incd[:,:weight] ) # £mn 
-        out[2,col] = sum((incd[:,col] .> 0) .* incd[:,:weight]) # counts
-        row = 3
-        for em in instances( ILO_Employment )
-            selected = incd.employment_status.==em
-            out[row,col] = sum( WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
-            row += 1
-            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
-            row += 1
-        end
-        for em in instances( Tenure_Type )
-            selected = incd.tenure .== em
-            out[row,col] =sum(  WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
-            row += 1                
-            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
-            row += 1
-        end
-        for a in 1:17
-            selected = incd.age_band .== a
-            out[row,col] = sum( WEEKS_PER_YEAR .* incd[selected,col] .* incd[selected,:weight] ) # £mn          
-            row += 1
-            out[row,col] = sum((incd[selected,col] .> 0) .* incd[selected,:weight]) # Counts
-            row += 1
-        end                
-    end    
-    # note that the Count field for the next two is meaningless
-    out.total_indirect = out.VED + out.fuel_duty + out.VAT + out.excise_beer + out.excise_cider + out.excise_wine + 
-        out.excise_tobacco
-    out.net_inc_indirect = out.net_cost - out.total_indirect # 
-    select!(out, Not([:pid,:hid,:weight])) # clear out pids 
-    return out
-end
-
-
 
 function summarise_output( output::Vector{DataFrame}, settings :: Settings )::NamedTuple
 
@@ -511,6 +406,13 @@ function calc( systems::Vector{Params}, settings :: Settings; reset=false )
     end
     summary = summarise_output( output, settings )
     return (;summary, output )
+end
+
+function zerocost( systems::Vector{Params}, settings :: Settings):Float
+    summary,output = calc( systems, settings :: Settings; reset=false )
+    s1 = sum( output[1].subsidies, Weights( output[1].weight ))
+    s2 = sum( output[2].subsidies, Weights( output[2].weight ))
+    return 1-((s2-s1)/s1)
 end
 
 function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::Symbol, prop::Number )
@@ -539,14 +441,15 @@ function pretty(s)
     s
 end
 
-function format_gl( io, title::String, sf :: DataFrame )
+function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
     sf[!,1] = pretty.(sf[!,1]) # labels on RHS
     # io = IOBuffer()
     pretty_table( 
         io, 
         sf[!,1:end]; 
-        backend = :markdown,
+        backend = backend,
         formatters=[fm], 
+        col_labels=TABLE_COLNAMES,
         alignment=[:l,fill(:r,9)...],
         # highlighters = [ht],
         title = title )
@@ -564,3 +467,18 @@ function tables_to_md( out, title, tabs )
     format_gl( out, "Revenue Quintile (5=highest)", tabs.gl_revenue_quintile.table )
     format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient)", tabs.gl_outputs_over_inputs_quartile.table )  
 end
+
+
+
+function tables_to_typst( out, title, tabs )
+    println( out, "= $title")
+    format_gl( out, "Farm Type", tabs.gl_farm_type.table; backend=:typst )
+    format_gl( out, "Tenure Type", tabs.gl_tenure_type.table; backend=:typst )
+    format_gl( out, "# Paid Workers", tabs.gl_paid_workers.table; backend=:typst )
+    format_gl( out, "Farm Size", tabs.gl_farm_size.table; backend=:typst )
+    format_gl( out, "Region", tabs.gl_gor.table; backend=:typst )
+    format_gl( out, "Form of Business", tabs.gl_form_of_business.table; backend=:typst )
+    format_gl( out, "Revenue Quintile (5=highest)", tabs.gl_revenue_quintile.table; backend=:typst )
+    format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient)", tabs.gl_outputs_over_inputs_quartile.table; backend=:typst )
+end
+
