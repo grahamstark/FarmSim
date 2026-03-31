@@ -76,12 +76,10 @@ function last_raw( f :: Farm )::DataFrameRow
     return r[r.account_year .== lasty,:][1,:]
 end
 
-
 @with_kw mutable struct Result
     subsidies = 0.0
     net_income = 0.0    
 end
-
 
 @with_kw mutable struct Params
     bi = 0.0
@@ -98,7 +96,6 @@ end
 @with_kw mutable struct Settings
     year = 2023
 end
-
 
 function calc_one( farm :: Farm, sys :: Params, settings :: Settings )::Result
     res = Result()
@@ -134,8 +131,10 @@ function make_output( nfarms :: Int, nsys :: Int )::Vector{DataFrame}
             tenure_type=fill("",nfarms),
             gor=fill("",nfarms),
             paid_workers=fill(0,nfarms),
+            paid_workers_summary = fill("",nfarms),
             unpaid_workers=fill(0,nfarms),
             workers=fill(0.0,nfarms),
+            workers_summary = fill("",nfarms),
             rural_classification=fill(0,nfarms),
             farm_size=fill("",nfarms),
             epub_farmer_education=fill("",nfarms),
@@ -148,6 +147,24 @@ function make_output( nfarms :: Int, nsys :: Int )::Vector{DataFrame}
             net_income=zeros(nfarms))
     end
     return out
+end
+
+function workers_str( i :: Number )::String
+    return if i == 0
+       "0"
+    elseif i == 1
+       "1"
+    elseif i == 2
+        "2"
+    elseif i < 5
+        "3-4"
+    elseif i < 8
+        "5-7"
+    elseif i < 11
+        "8-10"
+    else
+        ">10"
+    end
 end
 
 function initialise( settings::Settings, nsys :: Int; reset=false )
@@ -216,6 +233,9 @@ function add_to_output!( output::DataFrame, farm::Farm, res :: Result, row::Int,
     r.revenue_quintile  = farm.revenue_quintile 
     r.weight = farm.weight
 
+    r.paid_workers_summary = workers_str(farm.paid_workers)
+    r.workers_summary = workers_str(farm.workers)
+
     r.net_income = res.net_income
     r.subsidies = res.subsidies
 end
@@ -232,7 +252,7 @@ const GL_COLNAMES = [
     "Gain >= 50%"
 ]
 
-const TABLE_COLNAMES=vcat( "",GL_COLNAMES)
+const TABLE_COLNAMES=["",GL_COLNAMES...,"Total Farms","Avg. Income","Avg. Change","% Change"]
 
 function gl(before::Number, after::Number)::String
 
@@ -269,6 +289,8 @@ function gl(before::Number, after::Number)::String
         end
     return GL_COLNAMES[i]
 end
+
+# vmean(x,y) = round(mean(x,Weights(y));digits=1)
 
 const MAX_EXAMPLES = 50
 
@@ -312,44 +334,38 @@ function gain_lose_table(
 	ghh = combine( groupby( dhh, [breakdown,:gainlose] ),:weight=>sum)
 	sort!( ghh, breakdown)
     vhh = unstack( ghh, :gainlose, :weight_sum )
-    @show vhh
     n = size( vhh )[1]
     missn = setdiff( colnames, Symbol.(names(vhh)))
     for m in missn
         vhh[:,m] = zeros(n)
     end
     select!( sort!(vhh, breakdown), colnames... )
-
     nr,nc = size(vhh)
-    #=
-    for r in eachrow(vhh)
-        for c in 2:nc
-            if ismissing(r[c])
-                r[c] = 0.0
-            end
-        end
-    end
-    =#
-
-    gavch = combine( groupby( dhh, [breakdown]),
-        ([:weight]=>sum=>:total_farms),          # sum of hh weights
-        ([:pre_income,:weight]=>mean=>:pre_income ),
-        ([:post_income,:weight]=>mean=>:post_income ),
-        ([:change_subsidies,:weight]=>mean=>:average_change_subsidies ))     # sum of bhc changes
-    gavch.avch = gavch.people_weighted_change_sum ./ gavch.weighted_people_sum # => average change for each group per person
-    gavch.total_transfer = WEEKS_PER_YEAR.*gavch.weighted_bhc_change_sum./1_000_000 # total moved to/from that group
-    # TEMP overwrite the new pct_change for JP -
-    gavch.pct_change = 100.0 .* ((gavch.people_weighted_post_income_sum .- gavch.people_weighted_pre_income_sum)./gavch.people_weighted_pre_income_sum)
-
-    # £spa
     vhh = coalesce.(vhh,0.0)
-
-    vhh.average_change_subsidies = gavcg.average_change_subsidies
-    vhh.total_change_subsidies = gavcg.total_change_subsidies
-    vhh.pct_change_income = gavcg.pct_change_income
-    vhh.total_farms = gavcg.total_farms
-
+    gavch = combine( groupby( dhh, [breakdown]),
+        ([:weight]=>sum=>:total_farms),
+        ([:pre_income,:weight]=>vmean=>:pre_income ),
+        ([:post_income,:weight]=>vmean=>:post_income ))
+    sort!( gavch, breakdown)
+    @show gavch
+    vhh.total_farms = gavch.total_farms
+    vhh.average_income = gavch.pre_income
+    vhh.average_change_income = gavch.post_income - gavch.pre_income
+    vhh.pct_change_income = 100.0 .* (gavch.post_income - gavch.pre_income) ./ gavch.pre_income
     return (; table=vhh,examples)
+end
+
+"""
+Make gain lose and psu a totals row in to the bottom
+"""
+function make_gain_lose_table( dhh :: DataFrame, breakdown::Symbol, totals::DataFrame ) :: NamedTuple
+    t = gain_lose_table( dhh, breakdown )
+    @show names(t.table)
+    rename!( totals, [1=>names(t.table)[1]]) # so we can merge totals row
+    @show names( totals )
+    push!( t.table, totals[1,:]; promote=true )
+    @show t.table
+    return t
 end
 
 function make_gain_lose_tables( 
@@ -357,20 +373,30 @@ function make_gain_lose_tables(
     after ::AbstractDataFrame,
     change :: Symbol )::NamedTuple
     dhh = deepcopy(before)
+    nrows, ncols = size(dhh)
+    dhh.total = fill( "Total", nrows )
     @show names(before)
 	dhh.gainlose = gl.(before[!,change], after[!,change])
-    gl_farm_type = gain_lose_table( dhh, :farm_type )
-    gl_tenure_type = gain_lose_table( dhh, :tenure_type )
-    gl_paid_workers = gain_lose_table( dhh, :paid_workers )
-    gl_farm_size = gain_lose_table( dhh, :farm_size )
-    gl_gor = gain_lose_table( dhh, :gor )
-    gl_form_of_business = gain_lose_table( dhh, :form_of_business )
-    gl_revenue_quintile = gain_lose_table( dhh, :revenue_quintile )
-    gl_outputs_over_inputs_quartile = gain_lose_table( dhh, :outputs_over_inputs_quartile )
+	dhh.pre_income = before.net_income
+    dhh.post_income = after.net_income
+	dhh.pre_subsidies= before.subsidies
+    dhh.post_subsidies = after.subsidies
+    gl_total = gain_lose_table( dhh, :total ).table
+    gl_farm_type = make_gain_lose_table( dhh, :farm_type, gl_total )
+    gl_tenure_type = make_gain_lose_table( dhh, :tenure_type, gl_total )
+    gl_paid_workers = make_gain_lose_table( dhh, :paid_workers_summary, gl_total )
+    gl_workers = make_gain_lose_table( dhh, :workers_summary, gl_total )
+    gl_farm_size = make_gain_lose_table( dhh, :farm_size, gl_total )
+    gl_gor = make_gain_lose_table( dhh, :gor, gl_total )
+    gl_form_of_business = make_gain_lose_table( dhh, :form_of_business, gl_total )
+    gl_revenue_quintile = make_gain_lose_table( dhh, :revenue_quintile, gl_total )
+    gl_outputs_over_inputs_quartile = make_gain_lose_table( dhh, :outputs_over_inputs_quartile, gl_total )
     return( ; 
+        gl_total,
         gl_farm_type, 
         gl_tenure_type, 
         gl_paid_workers, 
+        gl_workers,
         gl_farm_size,
         gl_gor,
         gl_form_of_business,
@@ -425,42 +451,118 @@ function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::
 end
 
 
-# for prettytables
-function fm(v, r,c) 
-    return if c == 1
-        v
-    elseif c < 12
-        Format.format(v, precision=0, commas=true)
-    else
-        Format.format(v, precision=2, commas=true)
-    end
-    s
-end
+# , BellCentennial LT Address
+const TYPST_PREAMBLE = """
 
-function pretty(s)
-    s
-end
+#set page(paper: "a4", flipped: true)
+
+#set text(
+  font: "Palatino Linotype",
+  size:6pt
+)
+
+#show table: set text(font: "Azo Sans", size:6pt)
+
+#set table(
+    columns: (20em, auto, auto),
+    align: (left, left, left),
+    inset: (x: 8pt, y: 4pt),
+    stroke: (x, y) => {if y <= 1 { (top: 0.5pt) }},
+    fill: (x, y) => if y > 0 and calc.rem(y, 2) == 0  { rgb("#eee") },
+  )
+"""
+
 
 function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
+
+
+    h1 = TypstHighlighter( ( data, r, c ) -> (c == 1), ["text-fill"=>"blue"])
+
+    function f_gainlose( h, data, r, c )
+        d = Pair{String,String}[]
+        colour = if c == 1
+            "navy"
+        elseif c >= 13
+            if data[r,c] < -0.1
+                "maroon"
+            elseif data[r,c] > 0.1
+                "olive"
+            else
+                "black"
+            end
+        else
+            "black"
+        end
+        push!(d, "text-fill" => colour)
+        if r == size( sf )[1]
+            push!(d, "fill" => "silver")
+        end
+        if(c == 1) || (r== size( sf )[1])
+            push!(d, "text-weight" => "bold")
+        end
+        return d
+    end
+
+    """
+    format cols at end green for good, red for bad.
+    """
+    hgainlosecols = TypstHighlighter( (data, r, c)->true,  f_gainlose ) # (c >= 13)
+    # htotal = TypstHighlighter( (data, r, c)->(r == size( sf )[1]), ["fill"=>"silver", "text-fill"=>"navy"] )
+
+
+
+    # for prettytables
+    function fm(v, r, c)
+        return if c == 1
+            v
+        elseif v == 0
+            "-"
+        elseif c < 14
+            Format.format(v, precision=0, commas=true)
+        else
+            Format.format(v, precision=2, commas=true)
+        end
+        s
+    end
+
+
+    function pretty(s)
+        s
+    end
+
     sf[!,1] = pretty.(sf[!,1]) # labels on RHS
+    nrows,ncols = size( sf )
+    tb = TypstTableBorders(
+        top_line="0pt",
+        header_line = "0pt",
+        merged_header_cell_line = "0pt",
+        middle_line = "0pt",
+        bottom_line = "0pt",
+        left_line = "0pt",
+        center_line = "0pt",
+        right_line = "0pt" )
+    t = TypstTableFormat(borders=tb, vertical_lines_at_data_columns= :none)
     # io = IOBuffer()
+
     pretty_table( 
         io, 
         sf[!,1:end]; 
         backend = backend,
         formatters=[fm], 
-        col_labels=TABLE_COLNAMES,
-        alignment=[:l,fill(:r,9)...],
+        highlighters = [hgainlosecols],
+        column_labels=TABLE_COLNAMES,
+        alignment=[:l,fill(:r,ncols-1)...],
+        table_format=t,
         # highlighters = [ht],
         title = title )
-    # return String(take!(io))
+
 end
 
 function tables_to_md( out, title, tabs )
     println( out, "# $title")
     format_gl( out, "Farm Type", tabs.gl_farm_type.table ) 
     format_gl( out, "Tenure Type", tabs.gl_tenure_type.table ) 
-    format_gl( out, "# Paid Workers", tabs.gl_paid_workers.table ) 
+    format_gl( out, "Number of Paid Workers", tabs.gl_paid_workers.table )
     format_gl( out, "Farm Size", tabs.gl_farm_size.table )
     format_gl( out, "Region", tabs.gl_gor.table )
     format_gl( out, "Form of Business", tabs.gl_form_of_business.table )
@@ -470,15 +572,20 @@ end
 
 
 
-function tables_to_typst( out, title, tabs )
+function tables_to_typst( outname::String, title::String, tabs )
+    out = open( outname, "w")
+    println( out, TYPST_PREAMBLE )
     println( out, "= $title")
     format_gl( out, "Farm Type", tabs.gl_farm_type.table; backend=:typst )
     format_gl( out, "Tenure Type", tabs.gl_tenure_type.table; backend=:typst )
-    format_gl( out, "# Paid Workers", tabs.gl_paid_workers.table; backend=:typst )
+    println( out, "#pagebreak()")
+    format_gl( out, "Paid Workers", tabs.gl_paid_workers.table; backend=:typst )
+    format_gl( out, "All Workers, Inc. Owners", tabs.gl_workers.table; backend=:typst )
     format_gl( out, "Farm Size", tabs.gl_farm_size.table; backend=:typst )
     format_gl( out, "Region", tabs.gl_gor.table; backend=:typst )
+    println( out, "#pagebreak()")
     format_gl( out, "Form of Business", tabs.gl_form_of_business.table; backend=:typst )
     format_gl( out, "Revenue Quintile (5=highest)", tabs.gl_revenue_quintile.table; backend=:typst )
     format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient)", tabs.gl_outputs_over_inputs_quartile.table; backend=:typst )
+    close(out)
 end
-

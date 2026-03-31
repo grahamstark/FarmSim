@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.21
+# v0.20.24
 
 using Markdown
 using InteractiveUtils
@@ -782,7 +782,8 @@ adm.unpaid_workers
 byyear[( 2023, )]
 
 # ╔═╡ e127ac08-7b4d-4768-961e-73fe497ac1f3
-df = 
+
+
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -811,7 +812,7 @@ StatsBase = "~0.34.9"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.4"
+julia_version = "1.12.5"
 manifest_format = "2.0"
 project_hash = "8640dcee3167f61bbad46667566cb26b8de42f66"
 
