@@ -625,21 +625,6 @@ names(byyear[3])
 # ╔═╡ 84d8ca0c-a1b8-4a05-911f-974bb8645f06
 sort(countmap(byyear[3].s_147_004_000)) # countryside productivity grant
 
-# ╔═╡ c93ab274-623b-464a-96ed-2ce3ea4cac3b
-sort(countmap(byyear[3].s_122)) #
-
-# ╔═╡ b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
-adm23.area_
-
-# ╔═╡ e9182342-7db9-40bf-8804-adb123110239
-crop_subsidies = adm.area_payments +adm23.set_aside_payments +adm23.other_crop_subsidies 
-
-# ╔═╡ 435b1a10-9c12-412e-890b-3dd41bfa750f
-other_livestock_subsidies = adm.livestock_subsidies -adm.scp_payments -adm.bsp_payments -adm.sap_payments -adm.bull_slaughter_premium 
-
-# ╔═╡ de372578-44c7-46f8-91ce-482476490e96
-adm.bsp
-
 # ╔═╡ c318081b-9013-425b-a299-aee138797c73
 byyear[3][!,INCOME]
 
@@ -660,6 +645,8 @@ levels(adm.form_of_business)
 
 # ╔═╡ b145f67f-a973-42e8-9513-0aadf8ce8a6f
 md"""
+### FADN Income Per Year by Farm Type
+
 The below is not quite table 3.1a from [Chapter 3: Farming income](https://www.gov.uk/government/statistics/agriculture-in-the-united-kingdom-2023/chapter-3-farming-income#distribution-of-farm-incomes-and-performance). I think the problem is that there's a `Horticulture` in the data but not in table 3.1a.
 """
 
@@ -670,6 +657,7 @@ begin
 adm.farm_business_income_non_neg = max.(adm.farm_business_income,(0.0,))
 
 # try this every way ..
+	
 table_3(adm; income=:fadn_gross_farm_income )
 table_3(adm; income=:farm_business_income, breakdown=:epub_farm_type )
 table_3(adm; income=:farm_business_income,weight=:weight_uncalibrated )
@@ -678,6 +666,18 @@ table_3(adm; income=:farm_business_income_non_neg )
 table_3(adm; income=:farm_business_income )
 
 end
+
+# ╔═╡ 9468d3e1-b2cf-42e9-ac53-106333e304f1
+md"### All Employees by Farm Type"
+
+# ╔═╡ 1b4893fe-c2bb-4d73-9c27-711e0ed72620
+table_count(adm; income=:total_workers )
+
+# ╔═╡ e746111e-3023-4a45-9ae5-e063af1ca14c
+md"### Paid Employees by Farm Type"
+
+# ╔═╡ 96bbab5b-2647-48d2-b251-2cd6adba6af6
+table_count(adm; income=:paid_workers )
 
 # ╔═╡ e323c4b8-0c90-46b3-bfbb-77885d2e801d
 md"""
@@ -755,6 +755,41 @@ begin
 	end
 	x
 end
+
+# ╔═╡ b4334b7e-4fae-4ff9-a9d1-18acde204148
+begin
+fm(x) = "£"*format(x/1000000;precision=0, commas=true)*"mn"
+ft(x) = format(x;precision=0, commas=true)
+ws( which ) = fm(sum(b3[!,which],Weights(b3.weight)))
+wc( which ) = ft(sum(b3[!,which],Weights(b3.weight)))	
+end
+
+# ╔═╡ b1e78688-3afd-48b2-b24d-70745e68644c
+
+
+# ╔═╡ c394adbf-2e8d-4db9-b6ce-0c57112d86e1
+fm(sum(adm.input_subsidies + adm.output_subsidies, Weights( adm.weight)))
+
+# ╔═╡ 3fa1eb51-37d0-4173-8031-5c10e99ab569
+ws(:subsidies_payments_to_agriculture)
+
+# ╔═╡ 063d8a75-0f82-45c4-8531-aeda142497ca
+ws(:net_subsidies_fixed)
+
+# ╔═╡ e2c698f1-2e5f-4f6e-8df2-568f0b7bfa19
+ws(:fadn_current_subsidies_taxes)
+
+# ╔═╡ 6090aa32-8c19-4964-86f4-a33cabfd02b2
+ws(:farm_business_income)
+
+# ╔═╡ 6ce7939d-aa24-4391-875d-243bf2f8d9ef
+wc(:total_workers)
+
+# ╔═╡ fcc533da-070e-4685-82e3-ace22444c786
+
+
+# ╔═╡ 232ce793-4b4f-41ec-9462-618bd49254da
+adm
 
 # ╔═╡ f05af3e4-75d1-4e67-a60d-fcd9aa3c77ea
 byyear[3]
@@ -2502,50 +2537,50 @@ version = "4.1.0+0"
 
 # ╔═╡ Cell order:
 # ╠═9817d960-dc29-11f0-ad5f-3f05e52e8af6
-# ╠═9dac990d-4f79-49f1-a9dd-d9a8502bee66
-# ╠═085a1619-2929-4394-8b1e-d3d2048d1e83
-# ╠═cb970315-80a4-4c52-aa41-21556c3d109d
-# ╠═16641f4f-ff04-4d81-ab5d-b36150235560
+# ╟─9dac990d-4f79-49f1-a9dd-d9a8502bee66
+# ╟─085a1619-2929-4394-8b1e-d3d2048d1e83
+# ╟─cb970315-80a4-4c52-aa41-21556c3d109d
+# ╟─16641f4f-ff04-4d81-ab5d-b36150235560
 # ╠═429da453-ee9d-4366-a0e6-ecaed5a103c2
 # ╠═5e3e490d-627b-4ba3-b000-cc3938d91325
 # ╠═bcf3205d-59fe-4c0d-b15f-0800509621ea
 # ╠═8b7a255f-e136-4ad2-952c-a13b5d30cb4b
-# ╠═4436ffa2-c99a-48d8-a9bc-4ca2d635eafa
-# ╠═fbe44d1d-1336-40dc-a0f3-950d6adc60e0
-# ╠═49731732-83fd-4689-bbe9-74d8f2dfdf91
-# ╠═ef865063-7bd7-4aae-8ac6-eb8303d99dc0
-# ╠═acd7d80d-7b4f-422e-bcad-dee0aae81dbb
+# ╟─4436ffa2-c99a-48d8-a9bc-4ca2d635eafa
+# ╟─fbe44d1d-1336-40dc-a0f3-950d6adc60e0
+# ╟─49731732-83fd-4689-bbe9-74d8f2dfdf91
+# ╟─ef865063-7bd7-4aae-8ac6-eb8303d99dc0
+# ╟─acd7d80d-7b4f-422e-bcad-dee0aae81dbb
 # ╠═518993ad-57bd-4a24-8836-23ed0189d76a
-# ╠═0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
-# ╠═0e6c741c-9b71-4d16-88fb-c0f416d4db64
-# ╠═3c75a340-aebc-4ac5-98c6-21dc0add1f69
+# ╟─0fc6e2e2-4fbd-4953-b4a8-6e811675a4b4
+# ╟─0e6c741c-9b71-4d16-88fb-c0f416d4db64
+# ╟─3c75a340-aebc-4ac5-98c6-21dc0add1f69
 # ╠═5f436ba4-3c96-4395-9784-645a76bf7154
-# ╠═4543cbf1-ab85-4061-b79d-242f305d8f51
-# ╠═3b997b94-659d-4124-8c7a-2472be4d5c51
+# ╟─4543cbf1-ab85-4061-b79d-242f305d8f51
+# ╟─3b997b94-659d-4124-8c7a-2472be4d5c51
 # ╟─a8693190-e7ff-4fcf-a565-aac7ee3847e7
-# ╠═756d39e6-3395-4de9-8444-f5a8194a5431
+# ╟─756d39e6-3395-4de9-8444-f5a8194a5431
 # ╟─c93b7bdd-d080-4b79-af55-3f99dab24349
-# ╠═4215f4ad-04b2-4168-82cf-62766ead8ca9
-# ╠═7fce55fd-2109-45f4-b1c4-3b54fcb78610
+# ╟─4215f4ad-04b2-4168-82cf-62766ead8ca9
+# ╟─7fce55fd-2109-45f4-b1c4-3b54fcb78610
 # ╠═a4cf074d-b4b5-4e95-80a4-e0ed07d224d7
 # ╠═e148f887-34a0-4bc5-b8b8-1a653ff4d2c6
 # ╠═ffd1b178-732d-4554-beb5-d63fc530bf62
 # ╠═97f3aae5-2538-4cd8-8628-63f04f34a664
 # ╠═d0a365e5-9109-47be-a77d-d98e206bd5c5
-# ╠═ba2e134c-0262-4c14-8a71-94f7698b6a74
+# ╟─ba2e134c-0262-4c14-8a71-94f7698b6a74
 # ╠═16ed291f-f9ac-4f0c-8a6a-d3389274aaa4
-# ╠═2f83b659-bdc1-4d05-bfde-3bc37307cf1c
+# ╟─2f83b659-bdc1-4d05-bfde-3bc37307cf1c
 # ╠═5f8fd0d4-8a04-48a9-af4b-757c7b989eb9
 # ╠═46e3998f-b700-42d6-bce3-96c72785c32f
 # ╠═9226378d-8cee-475c-ab18-88bf3c38d2d1
 # ╠═ff80dff9-551f-4b12-8bc6-7a2474dde4a3
 # ╠═04e8f363-d492-4a75-aedc-a34fd550303e
 # ╠═e51c0e0b-531e-4ab1-a6ee-71d583a727a7
-# ╠═0efdb424-0b77-4500-9d03-21a025ebd734
+# ╟─0efdb424-0b77-4500-9d03-21a025ebd734
 # ╠═a180d5ba-dceb-47c4-9a5d-c535a5b0e4e8
 # ╠═c469f3aa-a991-4f45-adba-5cebc09198b2
 # ╠═3781296b-7e5b-416b-b8ab-4c87fea1b0ba
-# ╠═8c8ebef1-e0c0-4753-bee1-682ca76ea99a
+# ╟─8c8ebef1-e0c0-4753-bee1-682ca76ea99a
 # ╠═af51a45e-5b9c-4f67-8167-f2d4011d1077
 # ╠═e52ceafe-2660-4faf-b57e-1c4f9302eb65
 # ╠═fc7b5302-71cf-4b1d-bd99-fc6c325f1ff3
@@ -2565,21 +2600,20 @@ version = "4.1.0+0"
 # ╠═fdb653b3-4583-476f-9c4a-9613ae566715
 # ╠═46037e32-d875-4674-aec0-4f70b3147c60
 # ╠═2e548864-9303-44a7-9647-c197209cb180
-# ╠═11da8987-9771-4179-943e-56c9ca39ba10
-# ╠═13467abb-81d9-4bc1-873d-ce997f4a3278
+# ╟─11da8987-9771-4179-943e-56c9ca39ba10
+# ╟─13467abb-81d9-4bc1-873d-ce997f4a3278
 # ╠═4eb02a85-0347-4385-b4a3-afe849dc059b
 # ╠═84d8ca0c-a1b8-4a05-911f-974bb8645f06
-# ╠═c93ab274-623b-464a-96ed-2ce3ea4cac3b
-# ╠═b8c4fe68-5e8e-4425-8b99-39b09c9c4ffe
-# ╠═e9182342-7db9-40bf-8804-adb123110239
-# ╠═435b1a10-9c12-412e-890b-3dd41bfa750f
-# ╠═de372578-44c7-46f8-91ce-482476490e96
 # ╠═c318081b-9013-425b-a299-aee138797c73
-# ╠═48cd83ec-d631-43fe-b651-53ecd9805e8e
-# ╠═cabc1675-1178-4e62-ae99-b0e7fc7ddf40
-# ╠═f7fcf3c8-89c0-453c-8065-0bb51422193b
+# ╟─48cd83ec-d631-43fe-b651-53ecd9805e8e
+# ╟─cabc1675-1178-4e62-ae99-b0e7fc7ddf40
+# ╟─f7fcf3c8-89c0-453c-8065-0bb51422193b
 # ╟─b145f67f-a973-42e8-9513-0aadf8ce8a6f
-# ╠═430272db-3d67-4e7c-8b14-3d4de07b59ed
+# ╟─430272db-3d67-4e7c-8b14-3d4de07b59ed
+# ╟─9468d3e1-b2cf-42e9-ac53-106333e304f1
+# ╟─1b4893fe-c2bb-4d73-9c27-711e0ed72620
+# ╟─e746111e-3023-4a45-9ae5-e063af1ca14c
+# ╠═96bbab5b-2647-48d2-b251-2cd6adba6af6
 # ╠═e323c4b8-0c90-46b3-bfbb-77885d2e801d
 # ╠═33fb1c96-310c-471a-a4eb-a0f85030f32b
 # ╠═2c0430b5-7763-4f37-a496-4e83195dc92b
@@ -2589,6 +2623,16 @@ version = "4.1.0+0"
 # ╠═03cf8bb9-40f6-458d-a101-fa1707c21bac
 # ╠═0c542e88-6a17-4318-851c-1ecbd252fac0
 # ╟─88026c04-6f81-4e28-b060-5a1fc00653e4
+# ╠═b4334b7e-4fae-4ff9-a9d1-18acde204148
+# ╠═b1e78688-3afd-48b2-b24d-70745e68644c
+# ╠═c394adbf-2e8d-4db9-b6ce-0c57112d86e1
+# ╠═3fa1eb51-37d0-4173-8031-5c10e99ab569
+# ╠═063d8a75-0f82-45c4-8531-aeda142497ca
+# ╠═e2c698f1-2e5f-4f6e-8df2-568f0b7bfa19
+# ╠═6090aa32-8c19-4964-86f4-a33cabfd02b2
+# ╠═6ce7939d-aa24-4391-875d-243bf2f8d9ef
+# ╠═fcc533da-070e-4685-82e3-ace22444c786
+# ╠═232ce793-4b4f-41ec-9462-618bd49254da
 # ╠═f05af3e4-75d1-4e67-a60d-fcd9aa3c77ea
 # ╠═6e682e09-76e2-40a4-9160-ed315c7eb823
 # ╠═8a1cadf5-dd27-43f5-8b3f-5272853e1de6

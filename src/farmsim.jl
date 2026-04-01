@@ -78,7 +78,8 @@ end
 
 @with_kw mutable struct Result
     subsidies = 0.0
-    net_income = 0.0    
+    net_income = 0.0
+    revenue = 0.0
 end
 
 @with_kw mutable struct Params
@@ -108,9 +109,10 @@ function calc_one( farm :: Farm, sys :: Params, settings :: Settings )::Result
     end
     r = last_raw(farm)
     chsubsidy = (1-sys.tmp_prop_paid)*r.net_subsidies_fixed
-    res.subsidies = r.net_subsidies_fixed - chsubsidy + bi
+    res.subsidies = r.net_subsidies_fixed - chsubsidy + bi # net_subsidies_fixed
     # q: fadn_output includes subsidies?
-    res.net_income = r.fadn_output + bi - chsubsidy
+    res.net_income = r.farm_business_income + bi - chsubsidy # or: r.fadn_output for gross output
+    res.revenue = r.fadn_output + bi - chsubsidy
     return res
 end
 
@@ -144,6 +146,7 @@ function make_output( nfarms :: Int, nsys :: Int )::Vector{DataFrame}
             revenue_quintile = fill(0,nfarms),
             weight=zeros(nfarms), 
             subsidies=zeros(nfarms),
+            revenue=zeros(nfarms),
             net_income=zeros(nfarms))
     end
     return out
@@ -238,6 +241,7 @@ function add_to_output!( output::DataFrame, farm::Farm, res :: Result, row::Int,
 
     r.net_income = res.net_income
     r.subsidies = res.subsidies
+    r.revenue = res.revenue
 end
 
 const GL_COLNAMES = [
@@ -249,7 +253,7 @@ const GL_COLNAMES = [
     "Gain < 10%",
     "Gain < 25%",
     "Gain < 50%",
-    "Gain >= 50%"
+    "Gain >=50%"
 ]
 
 const TABLE_COLNAMES=["",GL_COLNAMES...,"Total Farms","Avg. Income","Avg. Change","% Change"]
@@ -344,14 +348,14 @@ function gain_lose_table(
     vhh = coalesce.(vhh,0.0)
     gavch = combine( groupby( dhh, [breakdown]),
         ([:weight]=>sum=>:total_farms),
-        ([:pre_income,:weight]=>vmean=>:pre_income ),
-        ([:post_income,:weight]=>vmean=>:post_income ))
+        ([:pre_changevar,:weight]=>vmean=>:pre_changevar ),
+        ([:post_changevar,:weight]=>vmean=>:post_changevar ))
     sort!( gavch, breakdown)
     @show gavch
     vhh.total_farms = gavch.total_farms
-    vhh.average_income = gavch.pre_income
-    vhh.average_change_income = gavch.post_income - gavch.pre_income
-    vhh.pct_change_income = 100.0 .* (gavch.post_income - gavch.pre_income) ./ gavch.pre_income
+    vhh.average_changevar = gavch.pre_changevar
+    vhh.average_change_changevar = gavch.post_changevar - gavch.pre_changevar
+    vhh.pct_change_changevar = 100.0 .* (gavch.post_changevar - gavch.pre_changevar) ./ gavch.pre_changevar
     return (; table=vhh,examples)
 end
 
@@ -377,10 +381,9 @@ function make_gain_lose_tables(
     dhh.total = fill( "Total", nrows )
     @show names(before)
 	dhh.gainlose = gl.(before[!,change], after[!,change])
-	dhh.pre_income = before.net_income
-    dhh.post_income = after.net_income
-	dhh.pre_subsidies= before.subsidies
-    dhh.post_subsidies = after.subsidies
+	dhh.pre_changevar = before[!,change]
+    dhh.post_changevar = after[!,change]
+
     gl_total = gain_lose_table( dhh, :total ).table
     gl_farm_type = make_gain_lose_table( dhh, :farm_type, gl_total )
     gl_tenure_type = make_gain_lose_table( dhh, :tenure_type, gl_total )
@@ -408,13 +411,12 @@ function merge( d1::DataFrame, d2::DataFrame )::DataFrame
     adm = hcat(d1,d2;makeunique=true)
 end
 
-
-
 function summarise_output( output::Vector{DataFrame}, settings :: Settings )::NamedTuple
 
     gl_subsidies = make_gain_lose_tables( output[1], output[2], :subsidies )
     gl_net_income = make_gain_lose_tables( output[1], output[2], :net_income )
-    return (; gl_subsidies, gl_net_income )
+    gl_revenue = make_gain_lose_tables( output[1], output[2], :revenue )
+    return (; gl_subsidies, gl_net_income, gl_revenue )
 end
 
 function calc( systems::Vector{Params}, settings :: Settings; reset=false )
@@ -434,6 +436,19 @@ function calc( systems::Vector{Params}, settings :: Settings; reset=false )
     return (;summary, output )
 end
 
+function gl_to_row_pcts( df :: DataFrame )
+    dfc = deepcopy(df)
+    for r in eachrow( dfc)
+        for c in 2:10
+            r[c] *= 100/r[11]
+        end
+    end
+    dfc
+end
+
+"""
+
+"""
 function zerocost( systems::Vector{Params}, settings :: Settings):Float
     summary,output = calc( systems, settings :: Settings; reset=false )
     s1 = sum( output[1].subsidies, Weights( output[1].weight ))
@@ -451,17 +466,17 @@ function redistribute( ad::DataFrame; weight::Symbol, subsidy::Symbol, workers::
 end
 
 
-# , BellCentennial LT Address
+# , BellCentennial LT Address , flipped: true) , stretch: 75%
 const TYPST_PREAMBLE = """
 
-#set page(paper: "a4", flipped: true)
+#set page(paper: "a3" )
 
 #set text(
   font: "Palatino Linotype",
-  size:6pt
+  size:10pt
 )
 
-#show table: set text(font: "Azo Sans", size:6pt)
+#show table: set text(font: "Azo Sans", size:7pt)
 
 #set table(
     columns: (20em, auto, auto),
@@ -473,7 +488,7 @@ const TYPST_PREAMBLE = """
 """
 
 
-function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
+function format_gl( io, title::String, sf :: DataFrame; backend=:markdown, cell_prec=0 )
 
 
     h1 = TypstHighlighter( ( data, r, c ) -> (c == 1), ["text-fill"=>"blue"])
@@ -481,7 +496,7 @@ function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
     function f_gainlose( h, data, r, c )
         d = Pair{String,String}[]
         colour = if c == 1
-            "navy"
+            "blue"
         elseif c >= 13
             if data[r,c] < -0.1
                 "maroon"
@@ -490,6 +505,8 @@ function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
             else
                 "black"
             end
+        # elseif (r== size( sf )[1])
+          #  "blue"
         else
             "black"
         end
@@ -500,6 +517,7 @@ function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
         if(c == 1) || (r== size( sf )[1])
             push!(d, "text-weight" => "bold")
         end
+        # push!(d, "stretch"=>"75%")
         return d
     end
 
@@ -518,7 +536,7 @@ function format_gl( io, title::String, sf :: DataFrame; backend=:markdown )
         elseif v == 0
             "-"
         elseif c < 14
-            Format.format(v, precision=0, commas=true)
+            Format.format(v, precision=cell_prec, commas=true)
         else
             Format.format(v, precision=2, commas=true)
         end
@@ -572,20 +590,72 @@ end
 
 
 
-function tables_to_typst( outname::String, title::String, tabs )
-    out = open( outname, "w")
+function dump_tables_to_typst_and_csv( outname::String, title::String, tabs )
+    out = open( "$(outname).typ", "w")
+    csvf = IOBuffer()
     println( out, TYPST_PREAMBLE )
     println( out, "= $title")
+    println( csvf, "$title")
+
     format_gl( out, "Farm Type", tabs.gl_farm_type.table; backend=:typst )
+    format_gl( out, "Farm Type - Row %s", gl_to_row_pcts( tabs.gl_farm_type.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Farm Type\n\n")
+    CSV.write( csvf, tabs.gl_farm_type.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "Tenure Type", tabs.gl_tenure_type.table; backend=:typst )
+    format_gl( out, "Tenure Type - Row %s", gl_to_row_pcts( tabs.gl_tenure_type.table); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Tenure Type\n\n")
+    CSV.write( csvf, tabs.gl_tenure_type.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     println( out, "#pagebreak()")
     format_gl( out, "Paid Workers", tabs.gl_paid_workers.table; backend=:typst )
+    format_gl( out, "Paid Workers - Row %s",  gl_to_row_pcts( tabs.gl_paid_workers.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Paid Workers\n\n")
+    CSV.write( csvf, tabs.gl_paid_workers.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "All Workers, Inc. Owners", tabs.gl_workers.table; backend=:typst )
+    format_gl( out, "All Workers, Inc. Owners - Row %s", gl_to_row_pcts( tabs.gl_workers.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# All Workers, Inc. Owners\n\n")
+    CSV.write( csvf, tabs.gl_workers.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "Farm Size", tabs.gl_farm_size.table; backend=:typst )
+    format_gl( out, "Farm Size - Row %s", gl_to_row_pcts( tabs.gl_farm_size.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Farm Size\n\n")
+    CSV.write( csvf, tabs.gl_farm_size.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "Region", tabs.gl_gor.table; backend=:typst )
+    format_gl( out, "Region - Row %s", gl_to_row_pcts( tabs.gl_gor.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Region\n\n")
+    CSV.write( csvf, tabs.gl_gor.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     println( out, "#pagebreak()")
     format_gl( out, "Form of Business", tabs.gl_form_of_business.table; backend=:typst )
+    format_gl( out, "Form of Business - Row %s", gl_to_row_pcts( tabs.gl_form_of_business.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Form of Business\n\n")
+    CSV.write( csvf, tabs.gl_form_of_business.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "Revenue Quintile (5=highest)", tabs.gl_revenue_quintile.table; backend=:typst )
+    format_gl( out, "Revenue Quintile (5=highest) - Row %s", gl_to_row_pcts( tabs.gl_revenue_quintile.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Revenue Quintile (5=highest)\n\n")
+    CSV.write( csvf, tabs.gl_revenue_quintile.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient)", tabs.gl_outputs_over_inputs_quartile.table; backend=:typst )
+    format_gl( out, "Outputs Over Inputs Quartile (higher=more efficient) - Row %s",  gl_to_row_pcts( tabs.gl_outputs_over_inputs_quartile.table ); backend=:typst, cell_prec=1 )
+    println( csvf, "\n\n# Outputs Over Inputs Quartile (higher=more efficient)\n\n")
+    CSV.write( csvf, tabs.gl_outputs_over_inputs_quartile.table; delim='\t', append=true, writeheader=true, header=TABLE_COLNAMES)
+
     close(out)
+
+    csvout = open( "$(outname).tab", "w")
+    println( csvout, String(take!(csvf)))
+    close( csvout )
+
+    typst_command = `typst compile $(outname).typ`
+    run( typst_command )
+end
+
+function dump_all( outname::String, title::String, summary :: NamedTuple )
+    dump_tables_to_typst_and_csv( "$(outname)-fasn-income", "$(title) - % Change in FASN Net Income", summary.gl_net_income )
+    dump_tables_to_typst_and_csv( "$(outname)-fasn-revenue", "$(title) - % Change in FASN Farm Revenue", summary.gl_revenue )
+    dump_tables_to_typst_and_csv( "$(outname)-fasn-subsidies", "$(title) - % Change in Subsidies, Inc Basic Income", summary.gl_subsidies )
 end
